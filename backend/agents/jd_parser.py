@@ -121,5 +121,4 @@ Important rules:
 
     except Exception as e:
         logger.error(f"JD parsing failed: {e}", exc_info=True)
-        logger.info("Falling back to mock JD data")
-        return MOCK_PARSED_JD
+        raise

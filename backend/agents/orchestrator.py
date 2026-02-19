@@ -140,53 +140,51 @@ def generate_report_node(state: JobAnalysisState) -> dict:
                 "status": "failed", "error": str(e)}
 
 
+
 # ---------------------------------------------------------------------------
-# Build the LangGraph workflow
+# Pipeline steps definition (for progress tracking)
 # ---------------------------------------------------------------------------
 
+PIPELINE_STEPS = [
+    ("fetch_html",       "🌐 Fetching job page..."),
+    ("parse_jd",         "📋 Parsing job description..."),
+    ("fetch_company",    "🏢 Gathering company intelligence..."),
+    ("fetch_salary",     "💰 Analyzing salary data..."),
+    ("fetch_interviews", "🎯 Researching interview questions..."),
+    ("generate_report",  "📊 Generating your report..."),
+]
 
-def build_workflow() -> Any:
-    workflow = StateGraph(JobAnalysisState)
-
-    workflow.add_node("fetch_html", fetch_html_node)
-    workflow.add_node("parse_jd", parse_jd_node)
-    workflow.add_node("fetch_company", fetch_company_node)
-    workflow.add_node("fetch_salary", fetch_salary_node)
-    workflow.add_node("fetch_interviews", fetch_interviews_node)
-    workflow.add_node("generate_report", generate_report_node)
-
-    # Linear flow: fetch → parse → parallel enrichment → report
-    workflow.set_entry_point("fetch_html")
-    workflow.add_edge("fetch_html", "parse_jd")
-    workflow.add_edge("parse_jd", "fetch_company")
-    workflow.add_edge("parse_jd", "fetch_salary")
-    workflow.add_edge("parse_jd", "fetch_interviews")
-    workflow.add_edge("fetch_company", "generate_report")
-    workflow.add_edge("fetch_salary", "generate_report")
-    workflow.add_edge("fetch_interviews", "generate_report")
-    workflow.add_edge("generate_report", END)
-
-    return workflow.compile()
+# Map step keys to their node functions
+NODE_FUNCTIONS = {
+    "fetch_html": fetch_html_node,
+    "parse_jd": parse_jd_node,
+    "fetch_company": fetch_company_node,
+    "fetch_salary": fetch_salary_node,
+    "fetch_interviews": fetch_interviews_node,
+    "generate_report": generate_report_node,
+}
 
 
-_graph = None
+def _update_progress(jobs: dict, job_id: str, step_key: str, step_label: str, completed: list, total: int):
+    """Update the progress field on a job in the store."""
+    percent = int((len(completed) / total) * 100)
+    jobs[job_id]["progress"] = {
+        "current_step": step_key,
+        "current_step_label": step_label,
+        "completed_steps": list(completed),
+        "total_steps": total,
+        "percent": percent,
+    }
 
 
-def get_graph():
-    global _graph
-    if _graph is None:
-        _graph = build_workflow()
-    return _graph
-
-
-async def run_job_analysis(job_id: str, job_url: str) -> dict:
+async def run_job_analysis(job_id: str, job_url: str, jobs: dict = None) -> dict:
     """
-    Run the full job analysis pipeline.
-    Returns the final state dict.
+    Run the full job analysis pipeline with progress tracking.
+    Manually invokes each node in sequence so we can report progress between steps.
     """
     from config import settings
 
-    initial_state: JobAnalysisState = {
+    state: JobAnalysisState = {
         "job_id": job_id,
         "job_url": job_url,
         "html_content": "",
@@ -201,10 +199,26 @@ async def run_job_analysis(job_id: str, job_url: str) -> dict:
         "use_mock": settings.USE_MOCK_DATA,
     }
 
-    graph = get_graph()
+    completed_steps = []
+    total = len(PIPELINE_STEPS)
 
-    # LangGraph 0.0.x uses synchronous invoke; wrap in executor for async context
-    loop = asyncio.get_event_loop()
-    final_state = await loop.run_in_executor(None, graph.invoke, initial_state)
+    for step_key, step_label in PIPELINE_STEPS:
+        # Report that we're starting this step
+        if jobs:
+            _update_progress(jobs, job_id, step_key, step_label, completed_steps, total)
 
-    return final_state
+        # Run the node function
+        loop = asyncio.get_event_loop()
+        node_fn = NODE_FUNCTIONS[step_key]
+        partial_update = await loop.run_in_executor(None, node_fn, state)
+
+        # Merge the partial update into state
+        state.update(partial_update)
+
+        # Mark step as completed
+        completed_steps.append(step_key)
+        if jobs:
+            _update_progress(jobs, job_id, step_key, step_label, completed_steps, total)
+
+    return state
+

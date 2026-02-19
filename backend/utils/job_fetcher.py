@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Domains that require a real browser (JS-rendered SPAs)
 JS_RENDERED_DOMAINS = [
+    "linkedin.com",
     "eightfold.ai",
     "workday.com",
     "myworkdayjobs.com",
@@ -69,6 +70,50 @@ def _needs_browser(url: str) -> bool:
     return any(domain in url for domain in JS_RENDERED_DOMAINS)
 
 
+def _normalize_linkedin_url(url: str) -> str:
+    """
+    Convert LinkedIn collection URLs to direct job view URLs.
+    e.g. .../jobs/collections/top-applicant/?currentJobId=12345
+      -> .../jobs/view/12345
+    """
+    if "linkedin.com" in url and "currentJobId=" in url:
+        import re
+        match = re.search(r'currentJobId=(\d+)', url)
+        if match:
+            job_id = match.group(1)
+            direct_url = f"https://www.linkedin.com/jobs/view/{job_id}"
+            logger.info(f"Converted LinkedIn collection URL to direct URL: {direct_url}")
+            return direct_url
+    return url
+
+
+def _detect_login_wall(html: str, url: str) -> bool:
+    """Detect if the fetched page is a login/authentication wall."""
+    login_indicators = [
+        "Sign in",
+        "Join now",
+        "authwall",
+        "login-form",
+        "sign-in-form",
+        "Create your free account",
+        "Log in or sign up",
+    ]
+    soup = BeautifulSoup(html, "lxml")
+    text = soup.get_text()
+    title = soup.title.string if soup.title else ""
+    
+    # Check title for login indicators
+    if title and any(indicator.lower() in title.lower() for indicator in ["Sign In", "Log In", "Join"]):
+        return True
+    
+    # Check if page text contains login indicators but very little job content
+    indicator_count = sum(1 for ind in login_indicators if ind.lower() in text.lower())
+    if indicator_count >= 2:
+        return True
+    
+    return False
+
+
 def fetch_job_html_with_playwright(url: str) -> str:
     """
     Fetch HTML from a JS-rendered page using Playwright (headless Chromium).
@@ -85,9 +130,11 @@ def fetch_job_html_with_playwright(url: str) -> str:
                 locale="en-US",
             )
             page = context.new_page()
-            page.goto(url, wait_until="networkidle", timeout=30000)
-            # Extra wait to allow JS components to render
-            page.wait_for_timeout(3000)
+            # Use domcontentloaded instead of networkidle — networkidle
+            # hangs on sites like LinkedIn that continuously load resources
+            page.goto(url, wait_until="domcontentloaded", timeout=15000)
+            # Brief wait to allow JS components to render
+            page.wait_for_timeout(2000)
             html = page.content()
             browser.close()
             logger.info(f"Playwright fetched {len(html)} chars from {url}")
@@ -138,22 +185,55 @@ def extract_text_from_html(html: str) -> str:
 def get_job_content(url: str, use_mock: bool = False) -> tuple[str, str]:
     """
     Fetch job posting and return (html, text) tuple.
-    Falls back to mock data if use_mock=True or fetch fails.
+    Falls back to mock data if use_mock=True.
+    Raises an error with a user-friendly message if the page can't be fetched.
     """
     if use_mock:
         logger.info("Using mock job HTML data")
         html = MOCK_JOB_HTML
         return html, extract_text_from_html(html)
 
+    # Normalize LinkedIn URLs
+    url = _normalize_linkedin_url(url)
+
     try:
         html = fetch_job_html(url)
+        
+        # Detect login walls
+        if _detect_login_wall(html, url):
+            logger.warning(f"Login wall detected for {url}")
+            if "linkedin.com" in url:
+                raise ValueError(
+                    "LinkedIn requires login to view this job. "
+                    "Please try a direct job URL like: https://www.linkedin.com/jobs/view/<job-id> "
+                    "or use a different job board (Greenhouse, Lever, Indeed, etc.)"
+                )
+            else:
+                raise ValueError(f"The job page at {url} requires login/authentication to view.")
+        
         text = extract_text_from_html(html)
         if len(text.strip()) < 100:
             logger.warning("Fetched page has very little text — may be bot-blocked. Trying Playwright fallback.")
             html = fetch_job_html_with_playwright(url)
+            
+            if _detect_login_wall(html, url):
+                if "linkedin.com" in url:
+                    raise ValueError(
+                        "LinkedIn requires login to view this job. "
+                        "Please try a direct job URL like: https://www.linkedin.com/jobs/view/<job-id> "
+                        "or use a different job board (Greenhouse, Lever, Indeed, etc.)"
+                    )
+                else:
+                    raise ValueError(f"The job page at {url} requires login/authentication to view.")
+            
             text = extract_text_from_html(html)
         return html, text
+    except ValueError:
+        # Re-raise user-friendly errors (login walls, etc.)
+        raise
     except Exception as e:
-        logger.error(f"Failed to fetch job HTML, using mock data. Error: {e}")
-        html = MOCK_JOB_HTML
-        return html, extract_text_from_html(html)
+        logger.error(f"Failed to fetch job HTML: {e}")
+        raise ValueError(
+            f"Could not fetch the job page. Error: {str(e)}. "
+            "Please check the URL and try again."
+        )

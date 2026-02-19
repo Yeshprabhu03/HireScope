@@ -58,7 +58,7 @@ async def run_analysis(job_id: str, job_url: str):
 
         from agents.orchestrator import run_job_analysis
 
-        result = await run_job_analysis(job_id=job_id, job_url=job_url)
+        result = await run_job_analysis(job_id=job_id, job_url=job_url, jobs=jobs)
 
         jobs[job_id].update(
             {
@@ -68,6 +68,13 @@ async def run_analysis(job_id: str, job_url: str):
                 "salary_intelligence": result.get("salary_intelligence"),
                 "interview_intelligence": result.get("interview_intelligence"),
                 "html_report": result.get("html_report"),
+                "progress": {
+                    "current_step": "done",
+                    "current_step_label": "✅ Analysis complete!",
+                    "completed_steps": ["fetch_html", "parse_jd", "fetch_company", "fetch_salary", "fetch_interviews", "generate_report"],
+                    "total_steps": 6,
+                    "percent": 100,
+                },
             }
         )
         logger.info(f"Analysis completed for job_id={job_id}")
@@ -76,6 +83,13 @@ async def run_analysis(job_id: str, job_url: str):
         logger.error(f"Analysis failed for job_id={job_id}: {e}", exc_info=True)
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["error"] = str(e)
+        jobs[job_id]["progress"] = {
+            "current_step": "failed",
+            "current_step_label": "❌ Analysis failed",
+            "completed_steps": jobs[job_id].get("progress", {}).get("completed_steps", []),
+            "total_steps": 6,
+            "percent": 0,
+        }
 
 
 @app.post("/api/analyze")
@@ -87,6 +101,13 @@ async def analyze_job(request: AnalyzeRequest, background_tasks: BackgroundTasks
         "job_url": request.job_url,
         "status": "created",
         "error": None,
+        "progress": {
+            "current_step": "queued",
+            "current_step_label": "⏳ Queued for analysis...",
+            "completed_steps": [],
+            "total_steps": 6,
+            "percent": 0,
+        },
     }
     background_tasks.add_task(run_analysis, job_id, request.job_url)
     logger.info(f"Created job_id={job_id} for url={request.job_url}")
@@ -105,6 +126,7 @@ async def get_job_status(job_id: str):
         "status": job.get("status"),
         "error": job.get("error"),
         "parsed_jd": job.get("parsed_jd"),
+        "progress": job.get("progress"),
     }
 
 
@@ -139,6 +161,7 @@ async def list_jobs():
             "status": j.get("status"),
             "job_title": (j.get("parsed_jd") or {}).get("job_title"),
             "company": (j.get("parsed_jd") or {}).get("company"),
+            "progress": j.get("progress"),
         }
         for jid, j in jobs.items()
     ]
