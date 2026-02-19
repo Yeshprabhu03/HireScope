@@ -1,13 +1,11 @@
 """
-LangGraph Orchestrator: defines the job analysis workflow as a state machine.
-Nodes run sequentially where dependent, and salary/company/interview can run
-after JD parsing.
+Job Analysis Orchestrator: runs the analysis pipeline as a sequential state machine.
+Calls each node function directly (no LangGraph) for reliable sequential execution
+and real-time progress tracking.
 """
 import asyncio
 import logging
-from typing import TypedDict, Optional, Any
-
-from langgraph.graph import StateGraph, END
+from typing import TypedDict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +54,6 @@ def parse_jd_node(state: JobAnalysisState) -> dict:
         return {"parsed_jd": parsed.model_dump(), "status": "parsed"}
     except Exception as e:
         logger.error(f"parse_jd_node failed: {e}", exc_info=True)
-        # Return minimal fallback
         return {
             "parsed_jd": {"job_title": "Unknown", "company": "Unknown", "location": "Unknown",
                           "required_skills": [], "key_responsibilities": [], "seniority_level": "mid",
@@ -140,7 +137,6 @@ def generate_report_node(state: JobAnalysisState) -> dict:
                 "status": "failed", "error": str(e)}
 
 
-
 # ---------------------------------------------------------------------------
 # Pipeline steps definition (for progress tracking)
 # ---------------------------------------------------------------------------
@@ -177,10 +173,14 @@ def _update_progress(jobs: dict, job_id: str, step_key: str, step_label: str, co
     }
 
 
+PIPELINE_TIMEOUT_SECONDS = 90  # Hard cap; prevents jobs from hanging forever
+
+
 async def run_job_analysis(job_id: str, job_url: str, jobs: dict = None) -> dict:
     """
     Run the full job analysis pipeline with progress tracking.
-    Manually invokes each node in sequence so we can report progress between steps.
+    Calls each node directly (sequential) so we can report progress between steps.
+    Raises asyncio.TimeoutError if the pipeline exceeds PIPELINE_TIMEOUT_SECONDS.
     """
     from config import settings
 
@@ -199,26 +199,29 @@ async def run_job_analysis(job_id: str, job_url: str, jobs: dict = None) -> dict
         "use_mock": settings.USE_MOCK_DATA,
     }
 
-    completed_steps = []
+    completed_steps: list = []
     total = len(PIPELINE_STEPS)
+    loop = asyncio.get_event_loop()
 
-    for step_key, step_label in PIPELINE_STEPS:
-        # Report that we're starting this step
-        if jobs:
-            _update_progress(jobs, job_id, step_key, step_label, completed_steps, total)
+    async def _run_pipeline() -> dict:
+        nonlocal state, completed_steps
+        for step_key, step_label in PIPELINE_STEPS:
+            # Report we're starting this step
+            if jobs:
+                _update_progress(jobs, job_id, step_key, step_label, completed_steps, total)
 
-        # Run the node function
-        loop = asyncio.get_event_loop()
-        node_fn = NODE_FUNCTIONS[step_key]
-        partial_update = await loop.run_in_executor(None, node_fn, state)
+            # Run the node function in a thread so we don't block the event loop
+            node_fn = NODE_FUNCTIONS[step_key]
+            partial_update = await loop.run_in_executor(None, node_fn, state)
 
-        # Merge the partial update into state
-        state.update(partial_update)
+            # Merge partial update into state
+            state.update(partial_update)
 
-        # Mark step as completed
-        completed_steps.append(step_key)
-        if jobs:
-            _update_progress(jobs, job_id, step_key, step_label, completed_steps, total)
+            # Mark step as completed
+            completed_steps.append(step_key)
+            if jobs:
+                _update_progress(jobs, job_id, step_key, step_label, completed_steps, total)
 
-    return state
+        return state
 
+    return await asyncio.wait_for(_run_pipeline(), timeout=PIPELINE_TIMEOUT_SECONDS)

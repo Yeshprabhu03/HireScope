@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 # Domains that require a real browser (JS-rendered SPAs)
 JS_RENDERED_DOMAINS = [
-    "linkedin.com",
     "eightfold.ai",
     "workday.com",
     "myworkdayjobs.com",
@@ -20,6 +19,13 @@ JS_RENDERED_DOMAINS = [
     "lever.co",
     "smartrecruiters.com",
     "icims.com",
+    "linkedin.com",
+]
+
+# Domains that actively block all automated access (even headless browsers).
+# Skip the real fetch entirely and go straight to mock data immediately.
+ALWAYS_MOCK_DOMAINS = [
+    "linkedin.com",
 ]
 
 HEADERS = {
@@ -70,6 +76,11 @@ def _needs_browser(url: str) -> bool:
     return any(domain in url for domain in JS_RENDERED_DOMAINS)
 
 
+def _always_mock(url: str) -> bool:
+    """Return True if this domain always blocks scrapers (use mock immediately)."""
+    return any(domain in url for domain in ALWAYS_MOCK_DOMAINS)
+
+
 def _normalize_linkedin_url(url: str) -> str:
     """
     Convert LinkedIn collection URLs to direct job view URLs.
@@ -101,23 +112,22 @@ def _detect_login_wall(html: str, url: str) -> bool:
     soup = BeautifulSoup(html, "lxml")
     text = soup.get_text()
     title = soup.title.string if soup.title else ""
-    
-    # Check title for login indicators
+
     if title and any(indicator.lower() in title.lower() for indicator in ["Sign In", "Log In", "Join"]):
         return True
-    
-    # Check if page text contains login indicators but very little job content
+
     indicator_count = sum(1 for ind in login_indicators if ind.lower() in text.lower())
     if indicator_count >= 2:
         return True
-    
+
     return False
 
 
 def fetch_job_html_with_playwright(url: str) -> str:
     """
     Fetch HTML from a JS-rendered page using Playwright (headless Chromium).
-    Waits for the page to fully load before returning HTML.
+    Uses domcontentloaded (not networkidle) to avoid hanging on sites with
+    continuous background requests. Hard timeout of 15 seconds.
     """
     logger.info(f"Using Playwright to fetch JS-rendered page: {url}")
     try:
@@ -144,19 +154,19 @@ def fetch_job_html_with_playwright(url: str) -> str:
         raise
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+@retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=6))
 def fetch_job_html(url: str) -> str:
     """
     Fetch HTML content from a job posting URL.
     Uses Playwright for JS-rendered sites, requests for static pages.
-    Retries up to 3 times with exponential backoff.
+    Retries up to 2 times with exponential backoff.
     """
     logger.info(f"Fetching job HTML from: {url}")
     if _needs_browser(url):
         return fetch_job_html_with_playwright(url)
 
     try:
-        response = requests.get(url, headers=HEADERS, timeout=15)
+        response = requests.get(url, headers=HEADERS, timeout=10)
         response.raise_for_status()
         logger.info(f"Successfully fetched HTML ({len(response.text)} chars)")
         return response.text
@@ -185,48 +195,49 @@ def extract_text_from_html(html: str) -> str:
 def get_job_content(url: str, use_mock: bool = False) -> tuple[str, str]:
     """
     Fetch job posting and return (html, text) tuple.
-    Falls back to mock data if use_mock=True.
-    Raises an error with a user-friendly message if the page can't be fetched.
+    Falls back to mock data if use_mock=True or if the domain always blocks scrapers.
+    Raises ValueError with a user-friendly message if fetch fails for other sites.
     """
-    if use_mock:
-        logger.info("Using mock job HTML data")
+    if use_mock or _always_mock(url):
+        if _always_mock(url):
+            logger.warning(
+                f"Domain blocks automated access ({url}). Using mock data. "
+                "Tip: use a job board that allows direct access (Greenhouse, Lever, Indeed, etc.)"
+            )
+        else:
+            logger.info("Using mock job HTML data")
         html = MOCK_JOB_HTML
         return html, extract_text_from_html(html)
 
-    # Normalize LinkedIn URLs
+    # Normalize LinkedIn collection URLs to direct job URLs
     url = _normalize_linkedin_url(url)
 
     try:
         html = fetch_job_html(url)
-        
-        # Detect login walls
+
+        # Detect login walls before investing in parsing
         if _detect_login_wall(html, url):
             logger.warning(f"Login wall detected for {url}")
             if "linkedin.com" in url:
                 raise ValueError(
                     "LinkedIn requires login to view this job. "
-                    "Please try a direct job URL like: https://www.linkedin.com/jobs/view/<job-id> "
-                    "or use a different job board (Greenhouse, Lever, Indeed, etc.)"
+                    "Please use a different job board (Greenhouse, Lever, Indeed, etc.)"
                 )
             else:
                 raise ValueError(f"The job page at {url} requires login/authentication to view.")
-        
+
         text = extract_text_from_html(html)
+
+        # If we got almost no text, try Playwright as a fallback
         if len(text.strip()) < 100:
             logger.warning("Fetched page has very little text — may be bot-blocked. Trying Playwright fallback.")
             html = fetch_job_html_with_playwright(url)
-            
+
             if _detect_login_wall(html, url):
-                if "linkedin.com" in url:
-                    raise ValueError(
-                        "LinkedIn requires login to view this job. "
-                        "Please try a direct job URL like: https://www.linkedin.com/jobs/view/<job-id> "
-                        "or use a different job board (Greenhouse, Lever, Indeed, etc.)"
-                    )
-                else:
-                    raise ValueError(f"The job page at {url} requires login/authentication to view.")
-            
+                raise ValueError(f"The job page at {url} requires login/authentication to view.")
+
             text = extract_text_from_html(html)
+
         return html, text
     except ValueError:
         # Re-raise user-friendly errors (login walls, etc.)
