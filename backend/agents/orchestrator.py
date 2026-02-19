@@ -34,10 +34,21 @@ def fetch_html_node(state: JobAnalysisState) -> dict:
     """Fetch HTML from the job URL."""
     logger.info(f"[{state['job_id']}] Fetching HTML from {state['job_url']}")
     try:
-        from utils.job_fetcher import get_job_content
+        from utils.job_fetcher import get_job_content, _always_mock
 
-        html, text = get_job_content(state["job_url"], use_mock=state.get("use_mock", False))
-        return {"html_content": html, "text_content": text, "status": "fetched"}
+        use_mock = state.get("use_mock", False)
+        html, text = get_job_content(state["job_url"], use_mock=use_mock)
+
+        # If this domain always blocks scrapers, mock HTML was used — propagate
+        # use_mock=True so downstream nodes (JD parser, salary, etc.) also return
+        # sensible demo data instead of failing with "Unknown" everywhere.
+        forced_mock = _always_mock(state["job_url"])
+        return {
+            "html_content": html,
+            "text_content": text,
+            "status": "fetched",
+            "use_mock": use_mock or forced_mock,
+        }
     except Exception as e:
         logger.error(f"fetch_html_node failed: {e}", exc_info=True)
         return {"html_content": "", "text_content": "", "status": "fetch_failed", "error": str(e)}
