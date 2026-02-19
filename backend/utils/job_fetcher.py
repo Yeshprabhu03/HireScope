@@ -19,14 +19,15 @@ JS_RENDERED_DOMAINS = [
     "lever.co",
     "smartrecruiters.com",
     "icims.com",
-    "linkedin.com",
 ]
 
-# Domains that actively block all automated access (even headless browsers).
-# Skip the real fetch entirely and go straight to mock data immediately.
-ALWAYS_MOCK_DOMAINS = [
-    "linkedin.com",
-]
+# Domains that block all automated access — fail fast with a helpful message.
+BLOCKED_DOMAINS: dict[str, str] = {
+    "linkedin.com": (
+        "LinkedIn requires login to view job postings. "
+        "Please use a public job board instead: Greenhouse, Lever, Workday, Indeed, or Eightfold."
+    ),
+}
 
 HEADERS = {
     "User-Agent": (
@@ -76,9 +77,11 @@ def _needs_browser(url: str) -> bool:
     return any(domain in url for domain in JS_RENDERED_DOMAINS)
 
 
-def _always_mock(url: str) -> bool:
-    """Return True if this domain always blocks scrapers (use mock immediately)."""
-    return any(domain in url for domain in ALWAYS_MOCK_DOMAINS)
+def _check_blocked(url: str) -> None:
+    """Raise ValueError immediately for domains that block all automated access."""
+    for domain, message in BLOCKED_DOMAINS.items():
+        if domain in url:
+            raise ValueError(message)
 
 
 def _normalize_linkedin_url(url: str) -> str:
@@ -195,21 +198,19 @@ def extract_text_from_html(html: str) -> str:
 def get_job_content(url: str, use_mock: bool = False) -> tuple[str, str]:
     """
     Fetch job posting and return (html, text) tuple.
-    Falls back to mock data if use_mock=True or if the domain always blocks scrapers.
-    Raises ValueError with a user-friendly message if fetch fails for other sites.
+    Raises ValueError immediately for domains that block automated access.
+    Falls back to mock data only when use_mock=True (dev/test mode).
     """
-    if use_mock or _always_mock(url):
-        if _always_mock(url):
-            logger.warning(
-                f"Domain blocks automated access ({url}). Using mock data. "
-                "Tip: use a job board that allows direct access (Greenhouse, Lever, Indeed, etc.)"
-            )
-        else:
-            logger.info("Using mock job HTML data")
+    if use_mock:
+        logger.info("Using mock job HTML data")
         html = MOCK_JOB_HTML
         return html, extract_text_from_html(html)
 
-    # Normalize LinkedIn collection URLs to direct job URLs
+    # Fail fast with a clear message for blocked domains (e.g. LinkedIn)
+    _check_blocked(url)
+
+    # Normalize LinkedIn collection URLs — kept in case LinkedIn is ever removed
+    # from BLOCKED_DOMAINS and re-enabled via Playwright.
     url = _normalize_linkedin_url(url)
 
     try:
