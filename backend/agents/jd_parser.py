@@ -78,10 +78,7 @@ def parse_job_description(html: str, use_mock: bool = False) -> ParsedJD:
         return MOCK_PARSED_JD
 
     try:
-        from anthropic import Anthropic
-        from config import settings
-
-        client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        from utils.llm import llm_generate_json
 
         schema = ParsedJD.model_json_schema()
         prompt = f"""Extract structured data from this job posting HTML.
@@ -99,22 +96,7 @@ Important rules:
 {html[:15000]}
 </html>"""
 
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=2000,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-        )
-
-        raw_text = response.content[0].text.strip()
-        # Strip markdown code blocks if present
-        if raw_text.startswith("```"):
-            raw_text = raw_text.split("```")[1]
-            if raw_text.startswith("json"):
-                raw_text = raw_text[4:]
-            raw_text = raw_text.strip()
-
-        parsed_data = json.loads(raw_text)
+        parsed_data = llm_generate_json(prompt, max_tokens=2000, temperature=0.0)
         result = ParsedJD(**parsed_data)
         logger.info(f"Parsed JD: {result.job_title} at {result.company}")
         return result

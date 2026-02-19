@@ -32,7 +32,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=[o.strip() for o in settings.ALLOWED_ORIGINS.split(",")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -205,7 +205,10 @@ async def health_check():
     except Exception as e:
         health["services"]["chromadb"] = f"error: {e}"
 
-    # Check Claude API key
+    # Check API keys
+    health["services"]["gemini"] = (
+        "configured" if settings.GEMINI_API_KEY != "placeholder" else "not configured"
+    )
     health["services"]["anthropic"] = (
         "configured" if settings.ANTHROPIC_API_KEY != "placeholder" else "not configured"
     )

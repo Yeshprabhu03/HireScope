@@ -109,14 +109,11 @@ def fetch_company_intel(company: str, use_mock: bool = False) -> dict:
         intel["description"] = f"{company} is a company in the technology sector."
         logger.info(f"No Wikipedia data found for '{company}', using placeholder")
 
-    # Add Claude-generated insights about the company
     try:
-        from anthropic import Anthropic
         from config import settings
+        from utils.llm import llm_generate_json
 
-        if settings.ANTHROPIC_API_KEY != "placeholder":
-            import json
-            client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        if settings.GEMINI_API_KEY != "placeholder":
             prompt = f"""Provide brief company intelligence for {company}.
 Return ONLY valid JSON with this structure:
 {{
@@ -128,22 +125,11 @@ Return ONLY valid JSON with this structure:
   "recent_news": ["<2-3 recent notable events (use general knowledge)>"]
 }}"""
 
-            response = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=600,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-            )
-            raw = response.content[0].text.strip()
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            ai_data = json.loads(raw.strip())
+            ai_data = llm_generate_json(prompt, max_tokens=600, temperature=0.0)
             intel.update(ai_data)
-            logger.info(f"Enhanced company intel for '{company}' with Claude")
+            logger.info(f"Enhanced company intel for '{company}' with Gemini")
 
     except Exception as e:
-        logger.warning(f"Claude company enrichment failed: {e}")
+        logger.warning(f"Gemini company enrichment failed: {e}")
 
     return intel

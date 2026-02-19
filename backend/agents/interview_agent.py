@@ -91,10 +91,7 @@ def analyze_interviews(
             or len(behavioral_results.get("documents", [])) > 0
         )
 
-        from anthropic import Anthropic
-        from config import settings
-
-        client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        from utils.llm import llm_generate_json
 
         prompt = f"""You are an interview intelligence analyst. Based on the interview experiences below,
 synthesize key insights for a candidate interviewing for {role} at {company}.
@@ -119,22 +116,10 @@ Return ONLY valid JSON with this structure:
   "source": "RAG-powered analysis"
 }}"""
 
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1200,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-        )
-
-        raw = response.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        result = json.loads(raw.strip())
+        result = llm_generate_json(prompt, max_tokens=1200, temperature=0.1)
 
         if not has_real_data:
-            result["source"] = "Claude knowledge base (no RAG data for this company)"
+            result["source"] = "Gemini knowledge base (no RAG data for this company)"
 
         logger.info(f"Interview intelligence generated for '{role}' at '{company}'")
         return result

@@ -66,10 +66,8 @@ def estimate_market_salary_with_claude(
         }
 
     try:
-        from anthropic import Anthropic
-        from config import settings
+        from utils.llm import llm_generate_json
 
-        client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         prompt = f"""You are a compensation expert. Estimate the salary range for this position.
 
 Job Title: {job_title}
@@ -88,21 +86,10 @@ Return ONLY valid JSON with this structure:
   "notes": "<brief 1-2 sentence explanation>"
 }}"""
 
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=500,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-        )
-        raw = response.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        return json.loads(raw.strip())
+        return llm_generate_json(prompt, max_tokens=500, temperature=0.0)
 
     except Exception as e:
-        logger.error(f"Claude salary estimation failed: {e}", exc_info=True)
+        logger.error(f"Gemini salary estimation failed: {e}", exc_info=True)
         return {"min": 120000, "max": 200000, "median": 160000, "notes": "Estimate unavailable"}
 
 
