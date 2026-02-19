@@ -1,0 +1,29 @@
+[
+  {
+    "company": "Amazon",
+    "role": "Software Development Engineer",
+    "date": "2024-02",
+    "experience": "Amazon SDE2 interview loop. Started with an online assessment: 2 coding problems + work simulation (debugging and comprehension questions). Then a phone screen with 1 coding + 1 behavioral (Leadership Principles). Onsite was 4 rounds, each 1 hour with coding + behavioral. Technical questions: design Amazon's order management system, implement a parking lot, find K closest points to origin, and topological sort for course prerequisites. Every single round had Leadership Principles questions. Make sure to have strong STAR stories for all 16 LPs. Common LPs asked: Customer Obsession, Ownership, Dive Deep, Deliver Results. Got SDE2 offer.",
+    "difficulty": "hard",
+    "outcome": "offer",
+    "rounds": ["Online Assessment", "Phone Screen", "Onsite 1", "Onsite 2", "Onsite 3", "Onsite 4 (Bar Raiser)"]
+  },
+  {
+    "company": "Amazon",
+    "role": "Software Development Engineer",
+    "date": "2024-04",
+    "experience": "Applied to SDE1 position. OA had 2 LeetCode-style problems - I got a two-sum variant and a string compression problem. Phone screen had graph traversal (number of islands) and a question about my most challenging project. The onsite loop for SDE1 had 4 rounds. Coding: rotate matrix, minimum path sum in grid, validate BST. The bar raiser round was very thorough - deep dive into system design and asked me to design a simple message queue. They focus heavily on scalability thinking even at SDE1. Process took 4 weeks total. No offer - failed bar raiser.",
+    "difficulty": "hard",
+    "outcome": "no offer",
+    "rounds": ["OA", "Phone Screen", "Onsite x3", "Bar Raiser"]
+  },
+  {
+    "company": "Amazon",
+    "role": "Senior Software Development Engineer",
+    "date": "2023-12",
+    "experience": "Senior SDE (SDE3) interview. No OA, directly to phone screen. Phone had system design question: design a notification service. Onsite: 5 rounds. System design: design Amazon's product search. Coding: implement a Redis-like cache with TTL, alien dictionary problem. Leadership rounds focused on Earn Trust, Think Big, and Are Right A Lot. Bar raiser was particularly tough - they asked me to walk through a past architecture decision and critique it. Overall the process is much more LP-heavy than other companies. Received offer at SDE3 level.",
+    "difficulty": "hard",
+    "outcome": "offer",
+    "rounds": ["Phone Screen (System Design)", "System Design", "Coding 1", "Coding 2", "LP Round 1", "Bar Raiser"]
+  }
+]

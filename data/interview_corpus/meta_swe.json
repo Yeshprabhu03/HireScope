@@ -1,0 +1,29 @@
+[
+  {
+    "company": "Meta",
+    "role": "Software Engineer",
+    "date": "2024-01",
+    "experience": "Meta E5 interview process. Initial recruiter call, then 2 phone screens (each 45 min, 1 coding problem each). I got: count of smaller numbers after self (merge sort), and design a data structure supporting insert/delete/getRandom in O(1). Onsite was 5 rounds: 2 coding, 1 system design, 1 behavioral, 1 'jedi' (leadership for senior roles). Coding onsite: clone graph, find the celebrity problem. System design: design Facebook's newsfeed. Behavioral (called 'Ninja' at Meta): heavily focused on collaboration and influence. Meta moves very fast - got decision in 3 business days after onsite. Offer at E5.",
+    "difficulty": "hard",
+    "outcome": "offer",
+    "rounds": ["Recruiter Screen", "Phone Screen 1", "Phone Screen 2", "Coding 1", "Coding 2", "System Design", "Behavioral (Ninja)", "Leadership (Jedi)"]
+  },
+  {
+    "company": "Meta",
+    "role": "Software Engineer",
+    "date": "2024-05",
+    "experience": "E4 (mid-level) Meta interview. Phone screens: sliding window maximum and flatten nested list iterator. Onsite: 5 rounds. Technical questions included serialize/deserialize binary tree, word search in grid, design Instagram stories feature, and behavioral focusing on handling disagreements. Meta's coding interviews are known for being hard - they often ask medium-hard graph or DP problems. System design was very open-ended. They evaluate on problem-solving, not just correct answers. Fast process. Got E4 offer within a week.",
+    "difficulty": "hard",
+    "outcome": "offer",
+    "rounds": ["Phone Screen 1", "Phone Screen 2", "Coding x2", "System Design", "Behavioral"]
+  },
+  {
+    "company": "Meta",
+    "role": "Senior Software Engineer",
+    "date": "2023-10",
+    "experience": "Interviewed at Meta for E5 SWE role. They have a straightforward process: 2 initial coding screens, then onsite with 5 rounds. The coding problems were: implement a trie with search and prefix, and diameter of a binary tree. Onsite coding included a hard graph problem (minimum cost to connect all nodes) and regular expression matching. System design: design a chat system like WhatsApp at scale (1B users). They also ask about trade-offs extensively. Behavioral interview asked about times I drove technical direction. Very fast feedback. Got offer.",
+    "difficulty": "hard",
+    "outcome": "offer",
+    "rounds": ["Coding Screen 1", "Coding Screen 2", "Onsite Coding 1", "Onsite Coding 2", "System Design", "Behavioral", "Jedi (Leadership)"]
+  }
+]

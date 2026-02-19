@@ -1,0 +1,38 @@
+[
+  {
+    "company": "Google",
+    "role": "Software Engineer",
+    "date": "2024-01",
+    "experience": "I went through Google's full interview loop for an L5 Software Engineer position. The process started with a recruiter screen (30 min), then a technical phone screen with one coding problem (LeetCode medium - sliding window). After passing, I had 5 onsite rounds: 2 coding interviews, 1 system design, 1 Googleyness/behavioral, and 1 more coding. Coding questions: merge intervals, word ladder (BFS), and implement a task scheduler. System design: design Google Maps routing. Behavioral focused on leadership and handling ambiguity. Total process took 6 weeks. Got an offer at L5.",
+    "difficulty": "hard",
+    "outcome": "offer",
+    "rounds": ["Recruiter Screen", "Technical Phone Screen", "Coding 1", "Coding 2", "System Design", "Googleyness", "Coding 3"]
+  },
+  {
+    "company": "Google",
+    "role": "Software Engineer",
+    "date": "2024-03",
+    "experience": "Applied for L4 SWE. Recruiter reached out via LinkedIn. First round was a 45-min HackerRank assessment with 2 problems (easy + medium). Then a video call with an engineer - got a tree traversal problem (find all paths summing to target). Onsite had 4 rounds. Technical questions included: LRU cache implementation, design a distributed rate limiter, reverse nodes in k-group linked list, and a DP problem on coin change. The Googleyness interview asked about times I had conflicts and how I resolved them. Process was very structured. No offer - failed system design round.",
+    "difficulty": "hard",
+    "outcome": "no offer",
+    "rounds": ["HackerRank OA", "Video Screen", "Coding 1", "Coding 2", "System Design", "Googleyness"]
+  },
+  {
+    "company": "Google",
+    "role": "Senior Software Engineer",
+    "date": "2023-11",
+    "experience": "Senior L6 interview at Google. They skipped the phone screen and went straight to onsite. 6 rounds total: 3 coding, 1 system design, 1 leadership, 1 role-specific. Coding problems: serialize/deserialize binary tree, max flow network problem, and designing a thread-safe queue. System design was to design YouTube's video recommendation system at scale. Leadership interview focused on cross-team collaboration and technical decisions. The interviewers were very senior. Entire loop took 3 days. Received offer after 2 weeks.",
+    "difficulty": "hard",
+    "outcome": "offer",
+    "rounds": ["Coding 1", "Coding 2", "Coding 3", "System Design", "Leadership", "Role-Specific"]
+  },
+  {
+    "company": "Google",
+    "role": "Software Engineer",
+    "date": "2024-06",
+    "experience": "Google phone interview for SWE L3 (new grad). One coding question: given a list of words and a pattern, find all words matching the pattern. Then onsite with 4 rounds. Questions: binary tree maximum path sum, implement atoi, design a key-value store, and behavioral about a challenging project. They really care about code quality and communication during coding. Make sure to think aloud and ask clarifying questions. Got return offer after internship.",
+    "difficulty": "medium",
+    "outcome": "offer",
+    "rounds": ["Phone Screen", "Coding 1", "Coding 2", "System Design", "Behavioral"]
+  }
+]

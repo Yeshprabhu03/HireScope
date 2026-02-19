@@ -1,0 +1,51 @@
+EMPLOYER_NAME,JOB_TITLE,WAGE_RATE_OF_PAY_FROM,WAGE_RATE_OF_PAY_TO,WORKSITE_CITY,WORKSITE_STATE,CASE_STATUS,YEAR
+Google LLC,Software Engineer,150000,200000,Mountain View,CA,CERTIFIED,2023
+Google LLC,Senior Software Engineer,190000,260000,Mountain View,CA,CERTIFIED,2023
+Google LLC,Software Engineer III,165000,215000,Sunnyvale,CA,CERTIFIED,2023
+Google LLC,Staff Software Engineer,230000,310000,New York,NY,CERTIFIED,2023
+Google LLC,Senior Software Engineer,185000,245000,Seattle,WA,CERTIFIED,2023
+Google LLC,Software Engineer,145000,195000,Austin,TX,CERTIFIED,2023
+Google LLC,Principal Engineer,270000,350000,Mountain View,CA,CERTIFIED,2023
+Google LLC,Senior Software Engineer,195000,255000,San Francisco,CA,CERTIFIED,2023
+Meta Platforms Inc,Software Engineer,160000,220000,Menlo Park,CA,CERTIFIED,2023
+Meta Platforms Inc,Senior Software Engineer,200000,270000,Menlo Park,CA,CERTIFIED,2023
+Meta Platforms Inc,Software Engineer E4,165000,230000,New York,NY,CERTIFIED,2023
+Meta Platforms Inc,Software Engineer E5,215000,290000,Seattle,WA,CERTIFIED,2023
+Meta Platforms Inc,Staff Engineer E6,265000,360000,Menlo Park,CA,CERTIFIED,2023
+Amazon.com Inc,Software Development Engineer,130000,175000,Seattle,WA,CERTIFIED,2023
+Amazon.com Inc,Software Development Engineer II,155000,205000,Seattle,WA,CERTIFIED,2023
+Amazon.com Inc,Senior Software Development Engineer,185000,245000,Seattle,WA,CERTIFIED,2023
+Amazon.com Inc,Software Development Engineer,125000,165000,Austin,TX,CERTIFIED,2023
+Amazon.com Inc,Principal Software Development Engineer,230000,310000,Seattle,WA,CERTIFIED,2023
+Amazon.com Inc,Senior SDE,180000,240000,New York,NY,CERTIFIED,2023
+Microsoft Corporation,Software Engineer,140000,185000,Redmond,WA,CERTIFIED,2023
+Microsoft Corporation,Senior Software Engineer,175000,235000,Redmond,WA,CERTIFIED,2023
+Microsoft Corporation,Principal Software Engineer,220000,295000,Redmond,WA,CERTIFIED,2023
+Microsoft Corporation,Software Engineer II,150000,200000,Seattle,WA,CERTIFIED,2023
+Microsoft Corporation,Senior SWE,170000,230000,New York,NY,CERTIFIED,2023
+Apple Inc,Software Engineer,155000,210000,Cupertino,CA,CERTIFIED,2023
+Apple Inc,Senior Software Engineer,195000,260000,Cupertino,CA,CERTIFIED,2023
+Apple Inc,Staff Engineer,235000,315000,Cupertino,CA,CERTIFIED,2023
+Apple Inc,Software Engineer,145000,195000,Seattle,WA,CERTIFIED,2023
+Netflix Inc,Software Engineer,170000,240000,Los Gatos,CA,CERTIFIED,2023
+Netflix Inc,Senior Software Engineer,210000,290000,Los Gatos,CA,CERTIFIED,2023
+Netflix Inc,Staff Software Engineer,260000,360000,Los Gatos,CA,CERTIFIED,2023
+Airbnb Inc,Software Engineer,155000,210000,San Francisco,CA,CERTIFIED,2023
+Airbnb Inc,Senior Software Engineer,195000,260000,San Francisco,CA,CERTIFIED,2023
+Stripe Inc,Software Engineer,160000,225000,San Francisco,CA,CERTIFIED,2023
+Stripe Inc,Senior Software Engineer,200000,270000,San Francisco,CA,CERTIFIED,2023
+Uber Technologies Inc,Software Engineer,145000,200000,San Francisco,CA,CERTIFIED,2023
+Uber Technologies Inc,Senior Software Engineer,180000,245000,San Francisco,CA,CERTIFIED,2023
+Lyft Inc,Software Engineer,140000,195000,San Francisco,CA,CERTIFIED,2023
+Twitter Inc,Software Engineer,150000,210000,San Francisco,CA,CERTIFIED,2023
+Twitter Inc,Senior Software Engineer,190000,255000,San Francisco,CA,CERTIFIED,2023
+Salesforce Inc,Software Engineer,135000,185000,San Francisco,CA,CERTIFIED,2023
+Salesforce Inc,Senior Software Engineer,170000,230000,San Francisco,CA,CERTIFIED,2023
+Oracle Corporation,Software Engineer,120000,165000,Austin,TX,CERTIFIED,2023
+Oracle Corporation,Senior Software Engineer,155000,210000,Redwood City,CA,CERTIFIED,2023
+Intuit Inc,Software Engineer,130000,180000,Mountain View,CA,CERTIFIED,2023
+Intuit Inc,Senior Software Engineer,165000,225000,Mountain View,CA,CERTIFIED,2023
+Adobe Inc,Software Engineer,135000,185000,San Jose,CA,CERTIFIED,2023
+Adobe Inc,Senior Software Engineer,170000,230000,San Jose,CA,CERTIFIED,2023
+LinkedIn Corp,Software Engineer,145000,200000,Sunnyvale,CA,CERTIFIED,2023
+LinkedIn Corp,Senior Software Engineer,185000,250000,Sunnyvale,CA,CERTIFIED,2023
