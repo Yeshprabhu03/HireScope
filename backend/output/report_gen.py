@@ -22,11 +22,43 @@ def _fmt_currency(value) -> str:
         return str(value)
 
 
+def _salary_bar_svg(s_min: int, s_median: int, s_max: int) -> str:
+    """Horizontal SVG bar chart for min / median / max salary."""
+    if s_max == 0:
+        return ""
+    chart_w, bar_h, gap, label_w = 420, 28, 10, 80
+
+    def bar(value, color, label, y):
+        pct = min(value / s_max, 1.0)
+        bw = max(4, int(pct * chart_w))
+        return (
+            f'<text x="0" y="{y + bar_h // 2 + 5}" font-size="12" fill="#6b7280" '
+            f'font-family="sans-serif">{label}</text>'
+            f'<rect x="{label_w}" y="{y}" width="{bw}" height="{bar_h}" fill="{color}" rx="4"/>'
+            f'<text x="{label_w + bw + 6}" y="{y + bar_h // 2 + 5}" font-size="12" fill="#111827" '
+            f'font-weight="600" font-family="sans-serif">${value:,}</text>'
+        )
+
+    svg_h = (bar_h + gap) * 3
+    rows = (
+        bar(s_min, "#93c5fd", "Min", 0)
+        + bar(s_median, "#3b82f6", "Median", bar_h + gap)
+        + bar(s_max, "#1d4ed8", "Max", 2 * (bar_h + gap))
+    )
+    return (
+        f'<div style="margin: 16px 0;">'
+        f'<svg width="{label_w + chart_w + 100}" height="{svg_h}" '
+        f'xmlns="http://www.w3.org/2000/svg">{rows}</svg></div>'
+    )
+
+
 def generate_html_report(
     parsed_jd: dict,
     company_intel: dict,
     salary_intel: dict,
     interview_intel: dict,
+    job_id: str = "",
+    analysis_start: float = 0.0,
 ) -> str:
     """Generate a complete, styled HTML report from all analysis data."""
 
@@ -47,12 +79,17 @@ def generate_html_report(
     )
 
     salary_range = salary_intel.get("estimated_range", "N/A")
-    salary_median = _fmt_currency(salary_intel.get("median"))
-    salary_min = _fmt_currency(salary_intel.get("min"))
-    salary_max = _fmt_currency(salary_intel.get("max"))
+    _s_min_raw = salary_intel.get("min", 0) or 0
+    _s_max_raw = salary_intel.get("max", 0) or 0
+    _s_med_raw = salary_intel.get("median", 0) or 0
+    salary_median = _fmt_currency(_s_med_raw)
+    salary_min = _fmt_currency(_s_min_raw)
+    salary_max = _fmt_currency(_s_max_raw)
     salary_confidence = int(float(salary_intel.get("confidence_score", 0)) * 100)
     salary_sources = salary_intel.get("sources_used", [])
     salary_breakdown = salary_intel.get("breakdown", {})
+    salary_data_label = salary_intel.get("data_label", "")
+    salary_chart_svg = _salary_bar_svg(_s_min_raw, _s_med_raw, _s_max_raw)
 
     company_desc = company_intel.get("description", "No description available.")
     company_ceo = company_intel.get("ceo", "N/A")
@@ -70,6 +107,7 @@ def generate_html_report(
     interview_tips = interview_intel.get("tips", [])
     interview_overview = interview_intel.get("process_overview", "")
     interview_source = interview_intel.get("source", "")
+    interview_data_warning = interview_intel.get("data_warning", False)
 
     generated_at = datetime.now().strftime("%B %d, %Y at %I:%M %p")
 
@@ -300,9 +338,11 @@ def generate_html_report(
         <div class="label">Maximum</div>
       </div>
     </div>
-    <p style="color: var(--gray-600); font-size: 14px; margin-bottom: 8px;">
+    {salary_chart_svg}
+    <p style="color: var(--gray-600); font-size: 14px; margin-bottom: 4px;">
       <strong>Estimated Range:</strong> {salary_range}
     </p>
+    {f'<p style="color: #d97706; font-size: 13px; margin-bottom: 4px;">⚠ {salary_data_label}</p>' if salary_data_label else ''}
     <p style="color: var(--gray-600); font-size: 13px; margin-bottom: 4px;">
       Data confidence: {salary_confidence}%
     </p>
@@ -310,7 +350,7 @@ def generate_html_report(
       <div class="confidence-fill" style="width: {salary_confidence}%"></div>
     </div>
     <p style="color: var(--gray-600); font-size: 13px; margin-top: 8px;">
-      Sources: {", ".join(salary_sources) if salary_sources else "Market estimate"}
+      Sources: {", ".join(salary_sources) if salary_sources else "Market estimate only"}
     </p>
     {f'''
     <div style="margin-top: 16px;">
@@ -368,11 +408,11 @@ def generate_html_report(
   <div class="card">
     <div class="card-title">🎯 Interview Intelligence</div>
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-      <span class="badge badge-{'difficulty-' + interview_difficulty.lower()}" style="font-size: 13px; padding: 4px 14px;">
+      <span class="badge difficulty-{interview_difficulty.lower()}" style="font-size: 13px; padding: 4px 14px;">
         Difficulty: {interview_difficulty}
       </span>
-      <span style="font-size: 13px; color: var(--gray-600);">Source: {interview_source}</span>
     </div>
+    {f'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#92400e;">⚠ {interview_source}</div>' if interview_data_warning else f'<p style="font-size:13px;color:var(--gray-600);margin-bottom:12px;">Source: {interview_source}</p>'}
 
     {f'<p style="color: var(--gray-700); font-size: 14px; margin-bottom: 16px;">{interview_overview}</p>' if interview_overview else ''}
 
@@ -406,11 +446,42 @@ def generate_html_report(
     </div>
   </div>
 
+  <!-- Metadata -->
+  <div class="card" style="background: var(--gray-50); border-style: dashed;">
+    <div class="card-title" style="font-size: 14px; color: var(--gray-600);">📋 Analysis Metadata</div>
+    <div class="company-info-grid">
+      <div class="info-row">
+        <span class="info-label">Job ID</span>
+        <span class="info-value" style="font-family: monospace; font-size: 12px;">{job_id or "N/A"}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Generated</span>
+        <span class="info-value">{generated_at}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Salary Confidence</span>
+        <span class="info-value">{salary_confidence}% — {salary_data_label or "Market estimate"}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Data Sources</span>
+        <span class="info-value">{", ".join(salary_sources) if salary_sources else "Market estimate"}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Interview Data</span>
+        <span class="info-value">{"AI-generated guide" if interview_data_warning else "RAG corpus"}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Company Source</span>
+        <span class="info-value">{company_intel.get("source", "N/A")}</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Footer -->
   <div class="report-footer">
     <p>Generated by <strong>HireScope</strong> on {generated_at}</p>
     <p style="margin-top: 4px; font-size: 12px;">
-      AI-powered job intelligence. Data sourced from DOL H1B disclosures, Wikipedia, and RAG-powered interview corpus.
+      AI-powered job intelligence. Salary from DOL H1B disclosures + Gemini. Company from Wikipedia + Gemini. Interviews from corpus + Gemini.
     </p>
   </div>
 

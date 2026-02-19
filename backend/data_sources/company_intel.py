@@ -114,18 +114,22 @@ def fetch_company_intel(company: str, use_mock: bool = False) -> dict:
         from utils.llm import llm_generate_json
 
         if settings.GEMINI_API_KEY != "placeholder":
-            prompt = f"""Provide brief company intelligence for {company}.
-Return ONLY valid JSON with this structure:
+            prompt = f"""Provide company intelligence for {company} based on your knowledge.
+Return ONLY valid JSON with this exact structure (no markdown, no extra text):
 {{
-  "ceo": "<current CEO name or 'N/A'>",
-  "industry": "<industry sector>",
+  "ceo": "<current CEO full name, or 'N/A' if unknown>",
+  "founded": "<founding year, or 'N/A'>",
+  "headquarters": "<City, State/Country, or 'N/A'>",
+  "employees": "<approximate headcount, e.g. '~9,000' or 'N/A'>",
+  "revenue": "<latest annual revenue with year, e.g. '$8.4B (2023)' or 'N/A'>",
+  "industry": "<primary industry sector>",
   "business_model": "<1-2 sentences about how they make money>",
-  "culture_highlights": ["<3-4 key culture traits>"],
-  "interview_style": "<brief description of typical interview process>",
-  "recent_news": ["<2-3 recent notable events (use general knowledge)>"]
-}}"""
+  "culture_highlights": ["<3-4 key culture traits based on known reputation>"],
+  "recent_news": ["<2-3 real, verifiable recent events about this company>"]
+}}
+Use 'N/A' for any field you are not confident about. Do NOT invent data."""
 
-            ai_data = llm_generate_json(prompt, max_tokens=600, temperature=0.0)
+            ai_data = llm_generate_json(prompt, max_tokens=700, temperature=0.0)
             intel.update(ai_data)
             logger.info(f"Enhanced company intel for '{company}' with Gemini")
 

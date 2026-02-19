@@ -127,6 +127,7 @@ def generate_report_node(state: JobAnalysisState) -> dict:
             company_intel=state.get("company_intelligence") or {},
             salary_intel=state.get("salary_intelligence") or {},
             interview_intel=state.get("interview_intelligence") or {},
+            job_id=state.get("job_id", ""),
         )
         return {"html_report": html, "status": "completed"}
     except Exception as e:

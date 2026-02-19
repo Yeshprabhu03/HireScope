@@ -94,8 +94,8 @@ def get_salary_data(
     Falls back to mock data if df is None or no records found.
     """
     if df is None:
-        logger.info("No H1B dataframe available, using mock salary data")
-        return MOCK_SALARY_DATA
+        logger.info("No H1B dataframe available")
+        return {"count": 0}
 
     try:
         # Filter by job title (fuzzy)
@@ -103,8 +103,8 @@ def get_salary_data(
         filtered = df[title_mask].copy()
 
         if len(filtered) == 0:
-            logger.info(f"No H1B records found for job_title='{job_title}', using mock data")
-            return MOCK_SALARY_DATA
+            logger.info(f"No H1B records found for job_title='{job_title}'")
+            return {"count": 0}
 
         # Further filter by company if possible
         if company and company.lower() != "unknown":
@@ -118,13 +118,13 @@ def get_salary_data(
         # Use wage_from as base salary
         wage_col = "WAGE_RATE_OF_PAY_FROM"
         if wage_col not in filtered.columns:
-            return MOCK_SALARY_DATA
+            return {"count": 0}
 
         wages = filtered[wage_col].dropna()
         wages = wages[(wages >= 30000) & (wages <= 1000000)]  # Sanity filter
 
         if len(wages) == 0:
-            return MOCK_SALARY_DATA
+            return {"count": 0}
 
         # Build records sample
         sample_cols = [
@@ -153,4 +153,4 @@ def get_salary_data(
 
     except Exception as e:
         logger.error(f"Error querying H1B data: {e}", exc_info=True)
-        return MOCK_SALARY_DATA
+        return {"count": 0}

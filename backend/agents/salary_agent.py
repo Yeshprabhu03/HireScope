@@ -112,17 +112,21 @@ def analyze_salary(
     salary_estimates = []
 
     # Source 1: DOL H1B data
+    h1b_count = 0
     try:
         from config import settings
         from data_sources.dol_h1b import load_h1b_data, get_salary_data
 
         df = load_h1b_data(settings.DOL_H1B_DATA_PATH)
         h1b_data = get_salary_data(df, job_title, company, location)
-        if h1b_data.get("count", 0) > 0:
+        h1b_count = h1b_data.get("count", 0)
+        if h1b_count > 0:
             salary_estimates.append(
                 {"source": "DOL H1B", "min": h1b_data["min"], "max": h1b_data["max"], "median": h1b_data["median"]}
             )
-            sources_used.append("DOL H1B Data")
+            sources_used.append(f"DOL H1B Data ({h1b_count} filings)")
+        else:
+            logger.info(f"No H1B filings found for '{job_title}' at '{company}'")
     except Exception as e:
         logger.warning(f"H1B data lookup failed: {e}")
 
@@ -154,20 +158,38 @@ def analyze_salary(
     agg_max = int(max(all_maxs))
     agg_median = int(sum(all_medians) / len(all_medians))
 
-    confidence = min(0.95, 0.5 + len(sources_used) * 0.15)
+    # Confidence: 0.45 (AI only) → +0.20 for JD mention → +0.25 for H1B data
+    confidence = 0.45
+    if any("JD Mention" in s for s in sources_used):
+        confidence += 0.20
+    if h1b_count > 0:
+        confidence += 0.25 + min(0.05, h1b_count * 0.002)  # more filings → higher confidence
+    confidence = round(min(0.95, confidence), 2)
+
+    # Label when using AI estimate only
+    data_label = "Estimated (no H1B filings found)" if h1b_count == 0 else f"Based on {h1b_count} H1B filing(s)"
+
+    # Compute breakdown properly
+    bonus_low = int(agg_min * 0.10)
+    bonus_high = int(agg_median * 0.20)
+    equity_low = int(agg_min * 0.10)
+    equity_high = int(agg_median * 0.25)
+    total_low = agg_min + bonus_low + equity_low
+    total_high = agg_max + bonus_high + equity_high
 
     return {
         "estimated_range": f"${agg_min:,} - ${agg_max:,}",
         "min": agg_min,
         "max": agg_max,
         "median": agg_median,
-        "confidence_score": round(confidence, 2),
+        "confidence_score": confidence,
+        "data_label": data_label,
         "sources_used": sources_used,
         "breakdown": {
-            "base_salary": f"${agg_min:,} - ${int(agg_median * 1.05):,}",
-            "bonus": "10-20% of base (varies)",
-            "equity": market.get("total_comp_range", "Varies by company"),
-            "total_comp": market.get("total_comp_range", f"${agg_min:,} - ${int(agg_max * 1.3):,}"),
+            "base_salary": f"${agg_min:,} - ${agg_max:,}",
+            "bonus": f"${bonus_low:,} - ${bonus_high:,}  (10–20% of base)",
+            "equity": f"${equity_low:,} - ${equity_high:,} / yr  (RSUs, 4-yr vest)",
+            "total_comp": f"${total_low:,} - ${total_high:,}",
         },
         "notes": market.get("notes", ""),
         "source_details": salary_estimates,

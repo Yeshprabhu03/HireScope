@@ -119,12 +119,25 @@ Return ONLY valid JSON with this structure:
         result = llm_generate_json(prompt, max_tokens=1200, temperature=0.1)
 
         if not has_real_data:
-            result["source"] = "Gemini knowledge base (no RAG data for this company)"
+            result["source"] = (
+                "AI-generated guide (no verified interview data for this company). "
+                "Prepare using industry-standard patterns for this role level."
+            )
+            result["data_warning"] = True
 
         logger.info(f"Interview intelligence generated for '{role}' at '{company}'")
         return result
 
     except Exception as e:
         logger.error(f"Interview analysis failed: {e}", exc_info=True)
-        logger.info("Falling back to mock interview intel")
-        return MOCK_INTERVIEW_INTEL
+        # Return a minimal honest response — no mock data
+        return {
+            "rounds": [],
+            "technical_questions": [],
+            "behavioral_questions": [],
+            "difficulty": "unknown",
+            "tips": [],
+            "process_overview": f"Interview intelligence unavailable: {e}",
+            "source": "Error — analysis could not be completed",
+            "data_warning": True,
+        }
