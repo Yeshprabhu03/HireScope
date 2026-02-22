@@ -9,12 +9,12 @@ HireScope is an AI-powered job analysis platform that transforms any job posting
 
 ## ✨ Features
 
-- **🌐 Job Page Scraping** — Fetches and parses job postings from any URL (Greenhouse, Lever, Indeed, Eightfold, LinkedIn, and more)
-- **📋 JD Parsing** — AI-powered extraction of job title, company, skills, responsibilities, salary, and seniority
-- **🏢 Company Intelligence** — Wikipedia data + AI-enriched insights (CEO, culture, business model, recent news)
-- **💰 Salary Intelligence** — Triangulated salary estimates from DOL H1B data, JD mentions, and AI market analysis
-- **🎯 Interview Prep** — RAG-powered interview intelligence with technical/behavioral questions and prep tips
-- **📊 HTML Report** — Beautiful, printable/PDF-ready report with all findings
+- **🌐 Robust Job Page Scraping** — Fetches and parses job postings from any URL, including complex SPAs like Workday and Eightfold natively using `application/ld+json` schemas.
+- **📋 JD Parsing** — AI-powered extraction of job title, company, skills, responsibilities, salary, and seniority.
+- **🏢 Company Intelligence** — Real-time Market Cap integration via Yahoo Finance (`yfinance`) + Wikipedia data + AI-enriched insights (CEO, culture).
+- **💰 Salary Intelligence** — Triangulated salary estimates from DOL H1B data, JD mentions, and AI market analysis.
+- **🎯 High-Fidelity Mastery Roadmap** — Role-aware, dynamic RAG-powered interview intelligence featuring hierarchical technical/non-technical mastery categories, company-specific cultural values, and targeted gap analysis. Includes multi-platform data vetting (Reddit, WallStreetOasis, Exponent).
+- **📊 Professional HTML Report** — Full-width, clean UI report with explicit source attribution and confidence indicators for generated intelligence.
 - **⏱️ Real-Time Progress** — Live progress bar showing each analysis step as it completes
 
 ## 🏗️ Architecture
@@ -83,7 +83,6 @@ USE_MOCK_DATA=false
 ```bash
 cd backend
 pip install -r requirements.txt
-playwright install chromium
 uvicorn main:app --reload --port 8000
 ```
 
@@ -135,10 +134,10 @@ The orchestrator runs 6 sequential steps with real-time progress tracking:
 
 ## 🛠️ Tech Stack
 
-**Backend:** Python, FastAPI, LangGraph, Playwright, ChromaDB, Pydantic  
+**Backend:** Python, FastAPI, LangGraph, ChromaDB, Pydantic, `yfinance`  
 **Frontend:** React, TypeScript, Vite, Tiptap, Recharts  
 **AI:** Google Gemini 2.0 Flash  
-**Data:** DOL H1B disclosures, Wikipedia API, ChromaDB RAG
+**Data:** DOL H1B disclosures, Wikipedia API, RAG, Web Scrape
 
 ## 📝 License
 
