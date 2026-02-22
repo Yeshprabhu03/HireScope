@@ -44,12 +44,29 @@ MOCK_INTERVIEW_INTEL = {
 def scrape_on_demand_interviews(company: str, role: str, role_category: str) -> list[str]:
     """
     Placeholder: Simulate live web scraping of Glassdoor/WSO to fetch experiences.
-    In production, this would use residential proxies or an external API
-    to bypass Cloudflare and directly extract text from interview boards.
+    Now uses the LLM to generate highly distinctive mock data to prove the dynamically 
+    injected vectors are unique to each company.
     """
     logger.info(f"Simulating live scrape for {company} {role} ({role_category})...")
     
-    # Simulate a successful scrape of generic industry topics customized to the role
+    try:
+        from utils.llm import llm_generate
+        prompt = f"""Generate exactly 4 highly distinct paragraph-length mock interview experiences for a '{role}' at '{company}' (Category: {role_category}).
+They should sound like candidates posting on Blind or Glassdoor. 
+CRITICAL: You MUST explicitly mention {company}'s specific products, known cultural quirks, and technologies to prove this data belongs uniquely to {company}.
+Format your output as EXACTLY 4 paragraphs separated by double newlines. 
+Start each paragraph with: "[Source: Simulated Scraper - Blind] "
+Do not output anything else."""
+        
+        response = llm_generate(prompt, provider="gemini", temperature=0.7)
+        if response:
+            chunks = [chunk.strip() for chunk in response.split("\n\n") if chunk.strip()]
+            if len(chunks) >= 2:
+                return chunks[:4]
+    except Exception as e:
+        logger.warning(f"Simulated dynamic scraper failed to LLM generate: {e}")
+            
+    # Fallback to the hardcoded generic ones if LLM fails or is unavailable
     simulated_data = [
         f"[Source: Simulated Scraper] Interviewed for {role} at {company}. The process started with a recruiter screen where they asked about my motivations and past projects.",
         f"[Source: Simulated Scraper] Technical round for {company} focused heavily on scenario-based questions related to {role_category} challenges.",
