@@ -17,6 +17,15 @@ HireScope is an AI-powered job analysis platform that transforms any job posting
 - **📊 Professional HTML Report** — Full-width, clean UI report with explicit source attribution and confidence indicators for generated intelligence.
 - **⏱️ Real-Time Progress** — Live progress bar showing each analysis step as it completes
 
+## 🧠 Continuous Learning Architecture (Updated Feb 22, 2026)
+
+HireScope recently evolved from a stateless script into an intelligent, stateful system that learns and improves over time via a local SQLite database and dynamic ChromaDB (Vector Search) indexing.
+
+- **Phase 1 (Data Caching)** — Eliminates redundant external API calls by caching parsed job descriptions and Wikipedia snapshots.
+- **Phase 2 (Salary Intelligence)** — Automatically extracts explicit JD salary strings to build a proprietary baseline database, prioritizing "Learned Data" over DOL H1B data when 5+ observations are gathered for a role.
+- **Phase 3 (Dynamic RAG Indexing)** — Intercepts sparse RAG searches. If there are `< 3` interview experiences for a company, the system live-scrapes the web, caches the data in SQLite, and injects the new vectors directly into the live ChromaDB memory mid-flight before re-querying.
+- **Phase 4 (User Feedback Loop)** — Provides explicit Thumbs-Up / Thumbs-Down buttons on generated Study Guides, logging user feedback ratings directly into SQLite for future fine-tuning to prune hallucinated vectors.
+
 ## 🏗️ Architecture
 
 ```
