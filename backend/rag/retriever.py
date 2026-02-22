@@ -117,7 +117,7 @@ def retrieve_relevant_experiences(
         if collection.count() > 0:
             query_embedding = get_embedding(query)
             
-            # Step 1: Try strict match (Company + Role Category)
+            # Try strict match (Company + Role Category)
             where = {}
             if company and company.lower() not in ("unknown", "n/a", ""):
                 where["company"] = company.lower()
@@ -129,26 +129,23 @@ def retrieve_relevant_experiences(
                 "n_results": min(limit, collection.count()),
             }
             if where:
-                # If we have both, we need $and clause in ChromaDB if there are multiple conditions
                 if len(where) > 1:
+                    # ChromaDB syntax for multiple conditions
                     query_kwargs["where"] = {"$and": [{"company": where["company"]}, {"role_category": where["role_category"]}]}
                 else:
                     query_kwargs["where"] = where
 
             results = collection.query(**query_kwargs)
             
-            # Step 2: Fallback to just Role Category if Company match is empty
-            if (not results.get("documents") or not results["documents"][0]) and role_category:
-                logger.info(f"ChromaDB empty for company '{company}', falling back to role_category '{role_category}'")
-                results = collection.query(
-                    query_embeddings=[query_embedding],
-                    n_results=min(limit, collection.count()),
-                    where={"role_category": role_category}
-                )
-
+            # We must strictly return only company-matched results to prevent cross-contamination
+            # of simulated scraper data across different companies.
             if results.get("documents") and results["documents"][0]:
-                logger.info(f"ChromaDB returned results for role_category='{role_category}'")
+                logger.info(f"ChromaDB returned {len(results['documents'][0])} results for company='{company}', role_category='{role_category}'")
                 return results
+            else:
+                 # If no strict company match, we return empty so the pipeline can trigger the on-demand scraper!
+                 logger.info(f"ChromaDB empty for company '{company}', returning empty to trigger on-demand pipeline.")
+                 return {"documents": [], "metadatas": [], "distances": []}
     except Exception as e:
         logger.debug(f"ChromaDB unavailable or query failed: {e}")
 
