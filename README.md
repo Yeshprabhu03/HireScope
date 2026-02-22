@@ -150,7 +150,8 @@ The orchestrator runs 6 sequential steps with real-time progress tracking:
 
 ## 📝 License
 
-MIT
+**Proprietary and Confidential.**  
+All rights reserved. Unauthorized copying, modification, distribution, or use of this repository, via any medium, is strictly prohibited without explicit written permission.
 
 ---
 
