@@ -4,11 +4,6 @@ interface Props {
   onJobSubmitted: (jobId: string) => void
 }
 
-const EXAMPLE_URLS = [
-  'https://www.linkedin.com/jobs/view/3874561234',
-  'https://jobs.lever.co/company/job-id',
-  'https://boards.greenhouse.io/company/jobs/123',
-]
 
 export default function JobInput({ onJobSubmitted }: Props) {
   const [url, setUrl] = useState('')

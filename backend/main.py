@@ -51,6 +51,12 @@ class RAGQueryRequest(BaseModel):
     limit: int = 5
 
 
+class FeedbackRequest(BaseModel):
+    section: str = "interview_intelligence"
+    feedback_type: int  # 1 for upvote, -1 for downvote
+    source_text: str
+
+
 async def run_analysis(job_id: str, job_url: str, provider: str = "gemini"):
     """Background task: run the full LangGraph analysis pipeline."""
     try:
@@ -150,6 +156,27 @@ async def get_job_report(job_id: str):
         "salary_intelligence": job.get("salary_intelligence"),
         "interview_intelligence": job.get("interview_intelligence"),
     }
+
+
+@app.post("/api/jobs/{job_id}/feedback")
+async def submit_feedback(job_id: str, request: FeedbackRequest):
+    """Submit thumbs-up or thumbs-down feedback for a generated report section."""
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    try:
+        from database import save_user_feedback
+        save_user_feedback(
+            job_id=job_id,
+            section=request.section,
+            feedback_type=request.feedback_type,
+            source_text=request.source_text
+        )
+        logger.info(f"Received feedback ({request.feedback_type}) for job_id={job_id} on section={request.section}")
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Failed to save feedback for job_id={job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save feedback")
 
 
 @app.get("/api/jobs")

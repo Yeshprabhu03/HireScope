@@ -96,15 +96,14 @@ def retrieve_relevant_experiences(
     query: str,
     company: str = "",
     role: str = "",
+    role_category: str = "",
     industry: str = "",
     limit: int = 5,
     use_mock: bool = False,
 ) -> dict:
     """
     Retrieve relevant interview experience chunks.
-    Tries ChromaDB first; falls back to keyword search over JSON corpus.
-    If company-specific search yields nothing, it attempts a broader industry-based search.
-    Returns a dict with 'documents', 'metadatas', and 'distances'.
+    Tries ChromaDB first with strict role_category filtering.
     """
     if use_mock:
         return {"documents": [], "metadatas": [], "distances": []}
@@ -117,30 +116,50 @@ def retrieve_relevant_experiences(
         collection = get_collection()
         if collection.count() > 0:
             query_embedding = get_embedding(query)
+            
+            # Step 1: Try strict match (Company + Role Category)
             where = {}
             if company and company.lower() not in ("unknown", "n/a", ""):
                 where["company"] = company.lower()
+            if role_category:
+                where["role_category"] = role_category
 
             query_kwargs: dict = {
                 "query_embeddings": [query_embedding],
                 "n_results": min(limit, collection.count()),
             }
             if where:
-                query_kwargs["where"] = where
+                # If we have both, we need $and clause in ChromaDB if there are multiple conditions
+                if len(where) > 1:
+                    query_kwargs["where"] = {"$and": [{"company": where["company"]}, {"role_category": where["role_category"]}]}
+                else:
+                    query_kwargs["where"] = where
 
             results = collection.query(**query_kwargs)
-            if results.get("documents"):
-                logger.info(f"ChromaDB returned results for query='{query[:40]}...'")
+            
+            # Step 2: Fallback to just Role Category if Company match is empty
+            if (not results.get("documents") or not results["documents"][0]) and role_category:
+                logger.info(f"ChromaDB empty for company '{company}', falling back to role_category '{role_category}'")
+                results = collection.query(
+                    query_embeddings=[query_embedding],
+                    n_results=min(limit, collection.count()),
+                    where={"role_category": role_category}
+                )
+
+            if results.get("documents") and results["documents"][0]:
+                logger.info(f"ChromaDB returned results for role_category='{role_category}'")
                 return results
     except Exception as e:
-        logger.debug(f"ChromaDB unavailable, using keyword fallback: {e}")
+        logger.debug(f"ChromaDB unavailable or query failed: {e}")
+
+
 
     # Keyword-based fallback over JSON corpus
     logger.info(f"Using keyword search fallback for company='{company}', role='{role}'")
     results = _keyword_search_corpus(query, company, role, limit, industry=industry)
     
     # If still no results and we have an industry, try a broad industry query
-    if not results.get("documents") and industry:
+    if (not results.get("documents") or not results["documents"][0]) and industry:
         logger.info(f"Broadening search to industry: {industry}")
         results = _keyword_search_corpus(f"{industry} interview process questions", "", role, limit, industry=industry)
         

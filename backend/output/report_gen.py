@@ -51,24 +51,53 @@ def _salary_bar_svg(s_min: int, s_median: int, s_max: int) -> str:
         f'xmlns="http://www.w3.org/2000/svg">{rows}</svg></div>'
     )
 
-def _render_syllabus_category(cat: dict) -> str:
-    category = cat.get("category", "General")
-    topics = cat.get("topics", [])
-    topic_html = "".join([
-        f'<div style="margin-bottom: 12px;"><strong style="color: #334155; font-size: 13px;">{t.get("title")}</strong><p style="margin: 4px 0 0 0; font-size: 13px; color: #475569; line-height: 1.5;">{t.get("details")}</p></div>'
-        for t in topics
-    ])
+def _render_study_guide_section(section: dict, job_id: str) -> str:
+    title = section.get("title", "Section")
+    subsections = section.get("subsections", [])
+    
+    sub_html = ""
+    for sub in subsections:
+        sub_title = sub.get("title", "Topic")
+        importance = sub.get("importance", "MED").upper()
+        bullets = sub.get("bullet_points", [])
+        jd_justification = sub.get("jd_justification", "")
+        
+        bg_color = "#fef2f2" if importance == "CRITICAL" else "#fffbeb" if importance == "HIGH" else "#eff6ff"
+        text_color = "#991b1b" if importance == "CRITICAL" else "#92400e" if importance == "HIGH" else "#1e40af"
+        border_color = "#fecaca" if importance == "CRITICAL" else "#fde68a" if importance == "HIGH" else "#bfdbfe"
+        
+        bullet_html = "".join([f'<li style="margin-bottom: 8px; line-height: 1.6;">{b}</li>' for b in bullets])
+        
+        # We replace quotes and newlines for safe JS string passing
+        safe_title = sub_title.replace("'", "\\'").replace('"', '\\"')
+        
+        sub_html += f'''
+        <div style="margin-bottom: 24px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <h4 style="margin: 0; font-size: 15px; color: #0f172a;">{sub_title}</h4>
+                    <span style="background: {bg_color}; color: {text_color}; border: 1px solid {border_color}; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em;">{importance}</span>
+                </div>
+                <div style="display: flex; gap: 6px;">
+                    <button onclick="sendFeedback('{job_id}', 'study_guide', 1, '{safe_title}', this)" style="border:1px solid #e2e8f0; background:white; cursor:pointer; padding:4px 8px; border-radius:4px; font-size:12px; color:#475569;" title="Helpful">👍</button>
+                    <button onclick="sendFeedback('{job_id}', 'study_guide', -1, '{safe_title}', this)" style="border:1px solid #e2e8f0; background:white; cursor:pointer; padding:4px 8px; border-radius:4px; font-size:12px; color:#475569;" title="Irrelevant/Hallucinated">👎</button>
+                </div>
+            </div>
+            <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #475569;">
+                {bullet_html}
+            </ul>
+            <div style="margin-top: 12px; font-size: 12px; color: #64748b; font-style: italic; background: #f8fafc; padding: 8px 12px; border-left: 3px solid #cbd5e1;">
+                <strong>Source:</strong> {jd_justification}
+            </div>
+        </div>
+        '''
+
     return f'''
-    <div style="margin-bottom: 24px;">
-        <span style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e2e8f0; display: block; padding-bottom: 4px; margin-bottom: 12px;">{category}</span>
-        <div style="padding-left: 4px;">{topic_html}</div>
+    <div style="margin-bottom: 32px; border-bottom: 1px solid #e2e8f0; padding-bottom: 24px;">
+        <h3 style="color: #1e293b; font-size: 18px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #cbd5e1; display: inline-block; padding-bottom: 4px;">{title}</h3>
+        {sub_html}
     </div>
     '''
-
-def _render_company_value(val: dict) -> str:
-    trait = val.get("trait", "")
-    context = val.get("context", "")
-    return f'<div style="margin-bottom: 10px;"><strong style="font-size: 13px; color: #0f172a;">{trait}</strong>: <span style="font-size: 13px; color: #475569;">{context}</span></div>'
 
 def generate_html_report(
     parsed_jd: dict,
@@ -134,11 +163,7 @@ def generate_html_report(
     interview_confidence = int(float(interview_intel.get("confidence_score", 0.5)) * 100)
     interview_platforms = interview_intel.get("identified_sources", [])
     
-    roadmap = interview_intel.get("mastery_roadmap", {})
-    tech_syllabus = roadmap.get("technical_syllabus", [])
-    non_tech_syllabus = roadmap.get("non_technical_syllabus", [])
-    company_values = roadmap.get("company_values", [])
-    gap_analysis = roadmap.get("gap_analysis", {})
+    study_guide_sections = interview_intel.get("study_guide", [])
 
     generated_at = datetime.now().strftime("%B %d, %Y at %I:%M %p")
 
@@ -469,47 +494,15 @@ def generate_html_report(
     {f'''
     <div style="margin-bottom: 32px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
       <div style="background: #f8fafc; padding: 16px 20px; border-bottom: 1px solid #e2e8f0;">
-        <strong style="font-size: 15px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
-          Preparation Mastery Roadmap
+        <strong style="font-size: 16px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+          Complete Interview Study Guide
         </strong>
       </div>
-      
-      <div style="padding: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px;">
-        <!-- Left Col: Technical -->
-        <div>
-          <div style="margin-bottom: 24px; color: #1e293b; font-weight: 700; font-size: 14px;">Technical Core Mastery</div>
-          { "".join([_render_syllabus_category(cat) for cat in tech_syllabus]) }
-        </div>
-        
-        <!-- Right Col: Non-Technical & Values -->
-        <div>
-          <div style="margin-bottom: 24px; color: #1e293b; font-weight: 700; font-size: 14px;">Product & Leadership Mastery</div>
-          { "".join([_render_syllabus_category(cat) for cat in non_tech_syllabus]) }
-          
-          <div style="margin-top: 32px; background: #f1f5f9; border-radius: 8px; padding: 16px;">
-            <div style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">Company-Specific Values</div>
-            { "".join([_render_company_value(val) for val in company_values]) }
-          </div>
-        </div>
-      </div>
-
-      <!-- Gap Analysis -->
-      <div style="background: #fef2f2; border-top: 1px solid #fecaca; padding: 20px 24px;">
-        <div style="display: flex; gap: 20px;">
-          <div style="flex: 1;">
-            <strong style="font-size: 13px; color: #991b1b; display: block; margin-bottom: 8px;">Honest Gaps to Address</strong>
-            <p style="font-size: 13px; color: #b91c1c; line-height: 1.5; margin: 0;">{gap_analysis.get('summary', 'Ensure you are comfortable translating technical trade-offs into business value.')}</p>
-          </div>
-          <div style="flex: 1; background: rgba(255,255,255,0.5); border-radius: 6px; padding: 12px 16px; border: 1px solid #fecaca;">
-            <strong style="font-size: 12px; color: #991b1b; display: block; margin-bottom: 8px; text-transform: uppercase;">Priority Prep Focus</strong>
-            <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #991b1b; font-weight: 600;">
-              {"".join(f'<li style="margin-bottom: 4px;">{p}</li>' for p in gap_analysis.get('priorities', []))}
-            </ul>
-          </div>
-        </div>
+      <div style="padding: 24px 32px;">
+        {"".join([_render_study_guide_section(sec, job_id) for sec in study_guide_sections])}
       </div>
     </div>
-    ''' if tech_syllabus or non_tech_syllabus else ''}
+    ''' if study_guide_sections else ''}
 
     <div class="two-col">
       <div>
@@ -575,6 +568,28 @@ def generate_html_report(
   </div>
 
 </div>
+<script>
+function sendFeedback(jobId, section, value, sourceText, btnElem) {{
+  fetch(`/api/jobs/${{jobId}}/feedback`, {{
+    method: 'POST',
+    headers: {{ 'Content-Type': 'application/json' }},
+    body: JSON.stringify({{ section: section, feedback_type: value, source_text: sourceText }})
+  }}).then(res => {{
+    if(res.ok) {{
+       const originalText = btnElem.innerText;
+       const originalBg = btnElem.style.background;
+       btnElem.style.background = value === 1 ? '#dcfce3' : '#fee2e2';
+       btnElem.innerText = value === 1 ? '✅' : '❌';
+       btnElem.disabled = true;
+       setTimeout(() => {{
+           btnElem.style.background = originalBg;
+           btnElem.innerText = originalText;
+           btnElem.disabled = false;
+       }}, 2000);
+    }}
+  }}).catch(err => console.error(err));
+}}
+</script>
 </body>
 </html>"""
 

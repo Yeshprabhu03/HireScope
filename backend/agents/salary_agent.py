@@ -113,8 +113,26 @@ def analyze_salary(
     sources_used = []
     salary_estimates = []
 
-    # Source 1: DOL H1B data
+    # NEW: Source 0: HireScope Historical Database
+    try:
+        from database import get_historical_salary
+        historical = get_historical_salary(company, job_title, location)
+        if historical:
+            # We have enough proprietary observations to trust this more than H1B
+            logger.info(f"[{company}] Found {historical['count']} historical salary observations for '{job_title}'")
+            salary_estimates.append({
+                "source": "HireScope Historical Data", 
+                "min": historical["avg_min"], 
+                "max": historical["avg_max"], 
+                "median": (historical["avg_min"] + historical["avg_max"]) // 2
+            })
+            sources_used.append(f"HireScope Historical Data ({historical['count']} verified postings)")
+    except Exception as e:
+        logger.warning(f"Historical salary lookup failed: {e}")
+
+    # Source 1: DOL H1B data (Fallback if we don't have enough proprietary data, or add to blend)
     h1b_count = 0
+    h1b_median_val = None
     try:
         from config import settings
         from data_sources.dol_h1b import load_h1b_data, get_salary_data
@@ -122,6 +140,8 @@ def analyze_salary(
         df = load_h1b_data(settings.DOL_H1B_DATA_PATH)
         h1b_data = get_salary_data(df, job_title, company, location)
         h1b_count = h1b_data.get("count", 0)
+        h1b_median_val = h1b_data.get("median")
+        
         if h1b_count > 0:
             salary_estimates.append(
                 {"source": "DOL H1B", "min": h1b_data["min"], "max": h1b_data["max"], "median": h1b_data["median"]}
@@ -171,11 +191,31 @@ def analyze_salary(
     # Label when using AI estimate only
     data_label = "Estimated (no H1B filings found)" if h1b_count == 0 else f"Based on {h1b_count} H1B filing(s)"
 
-    # Compute breakdown properly
-    bonus_low = int(agg_min * 0.10)
-    bonus_high = int(agg_median * 0.20)
-    equity_low = int(agg_min * 0.10)
-    equity_high = int(agg_median * 0.25)
+    # Handle IB-specific bonuses which are radically different from Tech RSUs
+    is_ib = bool("investment banking" in job_title.lower() or "m&a" in job_title.lower() or "private equity" in job_title.lower())
+    
+    if is_ib:
+        if "vice president" in seniority_level.lower() or "vp" in seniority_level.lower():
+            agg_min, agg_max, agg_median = 250000, 350000, 300000
+        elif "associate" in seniority_level.lower():
+            agg_min, agg_max, agg_median = 175000, 225000, 200000
+        elif "director" in seniority_level.lower() or "md" in seniority_level.lower():
+            agg_min, agg_max, agg_median = 400000, 600000, 500000
+        else: # analyst
+            agg_min, agg_max, agg_median = 100000, 150000, 125000
+            
+        bonus_low = int(agg_min * 0.50)
+        bonus_high = int(agg_median * 1.50)
+        # IB rarely has heavy standard RSUs below MD level compared to base/bonus
+        equity_low = 0
+        equity_high = 0
+    else:
+        # Standard Tech/Corp roles
+        bonus_low = int(agg_min * 0.10)
+        bonus_high = int(agg_median * 0.20)
+        equity_low = int(agg_min * 0.10)
+        equity_high = int(agg_median * 0.25)
+        
     total_low = agg_min + bonus_low + equity_low
     total_high = agg_max + bonus_high + equity_high
 

@@ -108,7 +108,7 @@ export default function ReportViewer({ jobId, onBack }: Props) {
             <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#1e293b' }}>
               {(jd?.job_title as string) || 'Job Report'}
             </h2>
-            {jd?.company && (
+            {!!jd?.company && (
               <p style={{ color: '#64748b', fontSize: '14px' }}>{jd.company as string}</p>
             )}
           </div>

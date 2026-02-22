@@ -1,0 +1,40 @@
+[
+    {
+        "company": "JPMorgan Chase",
+        "role": "Product Delivery Associate",
+        "date": "2024-01",
+        "experience": "Phone screen with recruiter asking about Agile experience. Then virtual interview with hiring manager covering: 1) Walk me through a complex product delivery project you led. 2) How do you handle dependencies across multiple teams? 3) Describe your change management approach. 4) Scenario: Payment system goes down during peak hours, how do you respond?",
+        "difficulty": "medium",
+        "outcome": "offer",
+        "questions": [
+            "Walk me through a complex product delivery project",
+            "How do you handle dependencies across multiple teams?",
+            "Describe your change management approach",
+            "Scenario: Payment system outage during peak hours"
+        ]
+    },
+    {
+        "company": "JPMorgan Chase",
+        "role": "Payments Product Manager",
+        "date": "2023-11",
+        "experience": "3 rounds: (1) Recruiter screen, (2) Hiring manager 1-on-1 asking about payment systems knowledge, ACH vs wire transfer, PCI compliance. (3) Panel with 3 team members - product case study: design a real-time payment alert system for merchants.",
+        "difficulty": "medium",
+        "questions": [
+            "Explain ACH vs wire transfer",
+            "What is PCI DSS compliance?",
+            "Design a real-time payment alert system"
+        ]
+    },
+    {
+        "company": "JPMorgan Chase",
+        "role": "Technical Program Manager",
+        "date": "2024-02",
+        "experience": "Initial screen followed by a 4-hour superday. Focus was heavily on cross-functional alignment and stakeholder management. They asked how I prioritize features when dealing with aggressive deadlines from the business side. Also asked to walk through a time a delivery was failing and how I recovered it.",
+        "difficulty": "hard",
+        "questions": [
+            "How do you prioritize features with aggressive deadlines?",
+            "Describe a time a delivery failed and how you recovered it",
+            "How do you ensure cross-functional alignment?"
+        ]
+    }
+]

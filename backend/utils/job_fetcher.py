@@ -142,43 +142,28 @@ def _detect_login_wall(html: str, url: str) -> bool:
     return False
 
 
-def fetch_job_html_with_playwright(url: str) -> str:
+def fetch_job_html_with_cloudscraper(url: str) -> str:
     """
-    Fetch HTML from a JS-rendered page using Playwright (headless Chromium).
-    Uses domcontentloaded (not networkidle) to avoid hanging on sites with
-    continuous background requests. Hard timeout of 15 seconds.
+    Fallback fetcher using cloudscraper to bypass basic Cloudflare/Imperva 403 blocks
+    without needing a full headless browser.
     """
-    logger.info(f"Using Playwright to fetch JS-rendered page: {url}")
-    try:
-        from playwright.sync_api import sync_playwright
-
-        with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=True,
-                args=["--disable-blink-features=AutomationControlled"]
-            )
-            context = browser.new_context(
-                user_agent=HEADERS["User-Agent"],
-                locale="en-US",
-                viewport={"width": 1920, "height": 1080},
-                timezone_id="America/New_York",
-            )
-            page = context.new_page()
-            # Use domcontentloaded instead of networkidle — networkidle
-            # hangs on sites like LinkedIn that continuously load resources
-            page.goto(url, wait_until="domcontentloaded", timeout=15000)
-            # Brief wait to allow JS components to render
-            page.wait_for_timeout(5000)
-            html = page.content()
-            browser.close()
-            if len(html) < 500:
-                logger.warning(f"Playwright fetched very short content ({len(html)} chars) from {url}. Possible block.")
-            else:
-                logger.info(f"Playwright fetched {len(html)} chars from {url}")
-            return html
-    except Exception as e:
-        logger.error(f"Playwright fetch failed for {url}: {e}")
-        raise
+    logger.info(f"Using Cloudscraper fallback for: {url}")
+    import cloudscraper
+    scraper = cloudscraper.create_scraper(
+        browser={
+            'browser': 'chrome',
+            'platform': 'darwin',
+            'desktop': True
+        }
+    )
+    response = scraper.get(url, timeout=15)
+    response.raise_for_status()
+    html = response.text
+    if len(html) < 500:
+        logger.warning(f"Cloudscraper fetched very short content ({len(html)} chars) from {url}")
+    else:
+        logger.info(f"Cloudscraper fetched {len(html)} chars from {url}")
+    return html
 
 
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=6))
@@ -202,17 +187,23 @@ def fetch_job_html(url: str) -> str:
             logger.info(f"Successfully fetched HTML via requests ({len(response.text)} chars)")
             return response.text
         except requests.exceptions.HTTPError as e:
+            if response.status_code in [403, 429]:
+                logger.warning(f"HTTP {response.status_code} fetching {url}. Falling back to Cloudscraper...")
+                try:
+                    return fetch_job_html_with_cloudscraper(url)
+                except Exception as scraper_err:
+                    logger.error(f"Cloudscraper also blocked: {scraper_err}")
+                    raise ValueError(f"Access Denied: The company's firewall (Akamai/Cloudflare) is strictly blocking HireScope's AI from reading this URL ({response.status_code}).")
             logger.warning(f"HTTP error fetching {url}: {e}")
-            raise
+            raise ValueError(f"Failed to fetch job posting: {response.status_code} Error")
         except requests.exceptions.ConnectionError as e:
             logger.warning(f"Connection error fetching {url}: {e}")
-            raise
+            raise ValueError(f"Failed to connect to the job URL. The site might be down.")
         except requests.exceptions.Timeout as e:
             logger.warning(f"Timeout fetching {url}: {e}")
-            raise
+            raise ValueError(f"The job posting took too long to respond and timed out.")
 
-    # Playwright causes deadlocks/segfaults on this environment.
-    # We bypass it and directly rely on requests.
+    # Try requests first. If it gets 403/429, the except block will trigger Playwright.
     return _fetch_with_requests()
 
 

@@ -34,23 +34,43 @@ MOCK_COMPANY_INTEL = {
 }
 
 
+def resolve_company_name(company_input: str) -> str:
+    """Resolve common abbreviations to full company names for accurate Wikipedia lookups."""
+    aliases = {
+        "JPMC": "JPMorgan Chase",
+        "JPM": "JPMorgan Chase",
+        "MS": "Morgan Stanley",
+        "GS": "Goldman Sachs",
+        "BAC": "Bank of America",
+        "C": "Citigroup",
+        "GOOGL": "Google",
+        "MSFT": "Microsoft",
+        "AWS": "Amazon Web Services",
+        "META": "Meta Platforms",
+        "AMZN": "Amazon"
+    }
+    return aliases.get(company_input.upper().strip(), company_input.strip())
+
 def fetch_wikipedia_summary(company: str) -> Optional[dict]:
     """Fetch company summary from Wikipedia API."""
+    # Resolve any known abbreviation first
+    resolved_company = resolve_company_name(company)
+    
     # Build a list of name variations to try
     suffixes_to_strip = [" Inc.", " LLC", " Corp.", " Corporation", " Holdings", " Group", " Ltd.", " Limited", ", Inc.", ", LLC"]
     
     search_names = []
     # Original name
-    search_names.append(company.strip())
+    search_names.append(resolved_company)
     # Progressively strip suffixes
-    name = company.strip()
+    name = resolved_company
     for suffix in suffixes_to_strip:
         if name.endswith(suffix):
             name = name[:-len(suffix)].strip()
-    if name != company.strip():
+    if name != resolved_company:
         search_names.append(name)
     # Also try stripping all suffixes at once
-    clean = company
+    clean = resolved_company
     for suffix in suffixes_to_strip:
         clean = clean.replace(suffix, "")
     clean = clean.strip()

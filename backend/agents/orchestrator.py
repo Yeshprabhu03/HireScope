@@ -33,9 +33,33 @@ class JobAnalysisState(TypedDict):
 
 
 def fetch_html_node(state: JobAnalysisState) -> dict:
-    """Fetch HTML from the job URL."""
+    """Fetch HTML from the job URL, utilizing the local cache if available and fresh."""
     logger.info(f"[{state['job_id']}] Fetching HTML from {state['job_url']}")
     from utils.job_fetcher import get_job_content
+    from database import get_job_passing
+    from datetime import datetime, timedelta
+
+    # Check cache first
+    cached_job = get_job_passing(state["job_url"])
+    if cached_job:
+        scraped_at_str = cached_job.get("scraped_at")
+        if scraped_at_str:
+            scraped_at = datetime.fromisoformat(scraped_at_str)
+            if datetime.now() - scraped_at < timedelta(days=7):
+                logger.info(f"[{state['job_id']}] Found fresh cached job posting from {scraped_at_str}")
+                # We can skip the parse_jd node completely if we already have the parsed JSON!
+                if cached_job.get("parsed_jd"):
+                    return {
+                        "html_content": cached_job["raw_html"],
+                        "text_content": "Cached", # Not strictly needed if parsed_jd exists
+                        "parsed_jd": cached_job["parsed_jd"],
+                        "status": "parsed" # Fast-forward the status
+                    }
+                return {
+                    "html_content": cached_job["raw_html"],
+                    "text_content": "Cached",
+                    "status": "fetched"
+                }
 
     # ValueError (blocked domain, login wall, etc.) propagates up so the job
     # is marked failed with the user-facing message — no silent mock fallback.
@@ -44,7 +68,12 @@ def fetch_html_node(state: JobAnalysisState) -> dict:
 
 
 def parse_jd_node(state: JobAnalysisState) -> dict:
-    """Parse job description with Claude."""
+    """Parse job description with Claude. Skips if already parsed via cache."""
+    # Fast-forward if we loaded parsed_jd from cache
+    if state.get("parsed_jd"):
+        logger.info(f"[{state['job_id']}] Skipping JD parsing (loaded from cache)")
+        return {}
+
     logger.info(f"[{state['job_id']}] Parsing job description")
     try:
         from agents.jd_parser import parse_job_description
@@ -65,17 +94,36 @@ def parse_jd_node(state: JobAnalysisState) -> dict:
 
 
 def fetch_company_node(state: JobAnalysisState) -> dict:
-    """Fetch company intelligence."""
+    """Fetch company intelligence, utilizing the local cache if available and fresh."""
     jd = state.get("parsed_jd") or {}
     company = jd.get("company", "Unknown")
     job_title = jd.get("job_title", "Unknown Role")
     logger.info(f"[{state['job_id']}] Fetching company intel for '{company}' regarding '{job_title}'")
+    
     try:
         from data_sources.company_intel import fetch_company_intel
+        from database import get_company_snapshot, save_company_snapshot
+        from datetime import datetime, timedelta
+
+        # Check cache first
+        if company != "Unknown":
+            cached_company = get_company_snapshot(company)
+            if cached_company and cached_company.get("data"):
+                snapshot_date_str = cached_company.get("snapshot_date")
+                if snapshot_date_str:
+                    snapshot_date = datetime.fromisoformat(snapshot_date_str)
+                    if datetime.now() - snapshot_date < timedelta(days=30):
+                        logger.info(f"[{state['job_id']}] Found fresh cached company snapshot from {snapshot_date_str}")
+                        return {"company_intelligence": cached_company["data"]}
 
         use_mock = state.get("use_mock", False)
         provider = state.get("provider", "gemini")
         intel = fetch_company_intel(company, role=job_title, use_mock=use_mock, provider=provider)
+        
+        # Save to cache
+        if company != "Unknown" and intel and not intel.get("error"):
+            save_company_snapshot(company, intel)
+            
         return {"company_intelligence": intel}
     except Exception as e:
         logger.error(f"fetch_company_node failed: {e}", exc_info=True)
@@ -124,6 +172,8 @@ def fetch_interviews_node(state: JobAnalysisState) -> dict:
             company=company, 
             role=role, 
             industry=industry, 
+            parsed_jd=jd,
+            company_intel=company_intel,
             use_mock=use_mock, 
             provider=provider
         )
@@ -251,6 +301,50 @@ async def run_job_analysis(job_id: str, job_url: str, provider: str = "gemini", 
             completed_steps.append(step_key)
             if jobs:
                 _update_progress(jobs, job_id, step_key, step_label, completed_steps, total)
+
+        # After all steps, save to Continuous Learning Cache
+        if state.get("status") == "completed" and state.get("parsed_jd") and state.get("html_content") and state.get("job_url"):
+            try:
+                from database import save_job_posting, save_salary_observation
+                jd_dict = state["parsed_jd"]
+                company = jd_dict.get("company", "Unknown")
+                title = jd_dict.get("job_title", "Unknown Role")
+                # Only save if we actually know the company to avoid polluting DB with bad parses
+                if company != "Unknown" and title != "Unknown Role":
+                    logger.info(f"[{state['job_id']}] Saving parsed job to SQLite continuous learning cache")
+                    save_job_posting(
+                        job_url=state["job_url"],
+                        company=company,
+                        job_title=title,
+                        parsed_jd=jd_dict,
+                        raw_html=state["html_content"]
+                    )
+                    
+                    # Phase 2: Save Salary Observation
+                    if state.get("salary_intelligence"):
+                        salary_intel = state["salary_intelligence"]
+                        # We only want to learn from explicit JD mentions to build an organic dataset
+                        if jd_dict.get("salary_mentioned") and not salary_intel.get("error"):
+                            # Try to find the H1B median we generated as additional context
+                            h1b_median = None
+                            for est in salary_intel.get("estimates", []):
+                                if est.get("source") == "DOL H1B":
+                                    h1b_median = est.get("median")
+                            
+                            logger.info(f"[{state['job_id']}] Saving salary observation for '{title}' at '{company}'")
+                            save_salary_observation(
+                                job_url=state["job_url"],
+                                company=company,
+                                job_title=title,
+                                location=jd_dict.get("location", "Unknown"),
+                                seniority=jd_dict.get("seniority_level", "Unknown"),
+                                jd_salary_mentioned=jd_dict.get("salary_mentioned"),
+                                h1b_median=h1b_median,
+                                confidence_score=0.8
+                            )
+                            
+            except Exception as e:
+                logger.error(f"[{state['job_id']}] Failed to save data to cache: {e}")
 
         return state
 
