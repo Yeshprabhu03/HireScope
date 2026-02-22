@@ -68,7 +68,7 @@ MOCK_PARSED_JD = ParsedJD(
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-def parse_job_description(html: str, use_mock: bool = False) -> ParsedJD:
+def parse_job_description(html: str, use_mock: bool = False, provider: str = "gemini") -> ParsedJD:
     """
     Parse a job description HTML using Claude to extract structured data.
     Falls back to mock data if use_mock=True or API call fails.
@@ -79,9 +79,53 @@ def parse_job_description(html: str, use_mock: bool = False) -> ParsedJD:
 
     try:
         from utils.llm import llm_generate_json
-
+        from bs4 import BeautifulSoup
+        
         schema = ParsedJD.model_json_schema()
-        prompt = f"""Extract structured data from this job posting HTML.
+        
+        # Optimize token usage by stripping HTML tags
+        soup = BeautifulSoup(html, "html.parser")
+        
+        # Save script tags in case the page is a SPA with JSON variables
+        # Also specifically look for structured schema.org data (application/ld+json)
+        scripts = soup.find_all('script')
+        json_ld_scripts = soup.find_all('script', type='application/ld+json')
+        json_ld_text = "\n".join([s.get_text() for s in json_ld_scripts if s.get_text()])
+        
+        # Remove script and style elements for clean text extraction
+        for script in soup(["script", "style", "noscript"]):
+            script.decompose()
+            
+            
+        # Extract meta tags explicitly since get_text() ignores attributes
+        meta_tags = soup.find_all('meta')
+        meta_text = "\n".join([m.get("content", "") for m in meta_tags if m.get("content")])
+            
+        # Get text content with minimal markdown-like structure
+        clean_text = soup.get_text(separator="\n", strip=True)
+        
+        # Prepend the meta tag content to give clear hints about Title and Description
+        if meta_text:
+            clean_text = f"--- META DATA ---\n{meta_text}\n--- PAGE CONTENT ---\n{clean_text}"
+            
+        # Always append Structured Schema JSON if it exists!
+        if json_ld_text:
+            clean_text = f"{clean_text}\n\n--- STRUCTURED JOB DATA ---\n{json_ld_text}"
+            
+        # If the extracted visual text is very short (e.g. Oracle Cloud JS page), 
+        # append ALL script contents so the LLM can parse the ugly JSON state data.
+        if len(clean_text) < 500:
+            script_text = "\n".join([s.get_text() for s in scripts if s.get_text() and s not in json_ld_scripts])
+            clean_text += "\n\n--- JSON/JAVASCRIPT APP STATE ---\n\n" + script_text
+            
+        # Truncate to a reasonable length (e.g., 30k chars is plenty for Gemini's context)
+        # but huge savings compared to raw HTML with scripts
+        clean_text = clean_text[:30000]
+        
+        # Escape triple quotes to prevent breaking the f-string
+        clean_text = clean_text.replace('"""', "'''")
+
+        prompt = f"""Extract structured data from this job posting text or JSON data.
 Return ONLY valid JSON that matches this exact schema (no markdown, no code blocks):
 {json.dumps(schema, indent=2)}
 
@@ -92,11 +136,10 @@ Important rules:
 - required_skills should include both technical skills and important soft skills
 - key_responsibilities should have at most 8 items, each concise
 
-<html>
-{html[:15000]}
-</html>"""
+Job Posting Text:
+{clean_text}"""
 
-        parsed_data = llm_generate_json(prompt, max_tokens=2000, temperature=0.0)
+        parsed_data = llm_generate_json(prompt, provider=provider, max_tokens=2000, temperature=0.0)
         result = ParsedJD(**parsed_data)
         logger.info(f"Parsed JD: {result.job_title} at {result.company}")
         return result

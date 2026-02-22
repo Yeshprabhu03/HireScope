@@ -9,12 +9,17 @@ class Settings(BaseSettings):
     ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
+    
+    # Paths are absolute to work regardless of where the app is started
+    BASE_DIR: Path = Path(__file__).parent
+    DATA_DIR: Path = BASE_DIR.parent / "data"
+    
     DATABASE_URL: str = "sqlite:///./hirescope.db"
     ALLOWED_ORIGINS: str = "http://localhost:5173"
-    CHROMA_PERSIST_DIR: str = "./chroma_db"
+    CHROMA_PERSIST_DIR: str = str(BASE_DIR / "chroma_db")
     CHROMA_COLLECTION_NAME: str = "interview_experiences"
-    DOL_H1B_DATA_PATH: str = "../data/h1b_data.csv"
-    GLASSDOOR_CACHE_DIR: str = "../data/interview_corpus"
+    DOL_H1B_DATA_PATH: str = str(DATA_DIR / "h1b_data.csv")
+    GLASSDOOR_CACHE_DIR: str = str(DATA_DIR / "interview_corpus")
     USE_MOCK_DATA: bool = False
 
     class Config:

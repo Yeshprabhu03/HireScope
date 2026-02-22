@@ -41,6 +41,7 @@ app.add_middleware(
 
 class AnalyzeRequest(BaseModel):
     job_url: str
+    provider: str = "gemini"
 
 
 class RAGQueryRequest(BaseModel):
@@ -50,15 +51,15 @@ class RAGQueryRequest(BaseModel):
     limit: int = 5
 
 
-async def run_analysis(job_id: str, job_url: str):
+async def run_analysis(job_id: str, job_url: str, provider: str = "gemini"):
     """Background task: run the full LangGraph analysis pipeline."""
     try:
         jobs[job_id]["status"] = "processing"
-        logger.info(f"Starting analysis for job_id={job_id}, url={job_url}")
+        logger.info(f"Starting analysis for job_id={job_id}, url={job_url}, provider={provider}")
 
         from agents.orchestrator import run_job_analysis
 
-        result = await run_job_analysis(job_id=job_id, job_url=job_url, jobs=jobs)
+        result = await run_job_analysis(job_id=job_id, job_url=job_url, provider=provider, jobs=jobs)
 
         jobs[job_id].update(
             {
@@ -109,8 +110,8 @@ async def analyze_job(request: AnalyzeRequest, background_tasks: BackgroundTasks
             "percent": 0,
         },
     }
-    background_tasks.add_task(run_analysis, job_id, request.job_url)
-    logger.info(f"Created job_id={job_id} for url={request.job_url}")
+    background_tasks.add_task(run_analysis, job_id, request.job_url, request.provider)
+    logger.info(f"Created job_id={job_id} for url={request.job_url} with provider={request.provider}")
     return {"job_id": job_id, "status": "created"}
 
 

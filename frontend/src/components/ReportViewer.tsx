@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-} from 'recharts'
+
 
 interface ReportData {
   job_id: string
@@ -91,21 +89,10 @@ export default function ReportViewer({ jobId, onBack }: Props) {
   if (!report) return null
 
   const jd = report.parsed_jd as Record<string, unknown> | undefined
-  const sal = report.salary_intelligence as Record<string, unknown> | undefined
 
-  const salaryChartData = sal && sal.min && sal.median && sal.max ? [
-    { name: 'Min', value: sal.min as number },
-    { name: 'Median', value: sal.median as number },
-    { name: 'Max', value: sal.max as number },
-  ] : null
-
-  const chartColors = ['#93c5fd', '#3b82f6', '#1d4ed8']
-
-  const fmtUSD = (v: number) =>
-    v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`
 
   return (
-    <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+    <div style={{ width: '100%', margin: '0 auto' }}>
       {/* Toolbar */}
       <div style={{
         display: 'flex',
@@ -158,41 +145,7 @@ export default function ReportViewer({ jobId, onBack }: Props) {
         </div>
       </div>
 
-      {/* Salary quick-view chart */}
-      {salaryChartData && (
-        <div style={{
-          background: 'white',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          padding: '20px 24px',
-          marginBottom: '16px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-        }}>
-          <div style={{ fontSize: '15px', fontWeight: '600', color: '#2563eb', marginBottom: '12px' }}>
-            💰 Salary Range
-            {sal?.data_label && (
-              <span style={{ fontSize: '12px', fontWeight: '400', color: '#d97706', marginLeft: '10px' }}>
-                ⚠ {sal.data_label as string}
-              </span>
-            )}
-          </div>
-          <ResponsiveContainer width="100%" height={140}>
-            <BarChart data={salaryChartData} layout="vertical" margin={{ left: 0, right: 60 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" tickFormatter={fmtUSD} tick={{ fontSize: 12 }} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 13, fontWeight: 600 }} width={56} />
-              <Tooltip formatter={(v: number) => [`$${v.toLocaleString()}`, 'Salary']} />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                {salaryChartData.map((_, i) => <Cell key={i} fill={chartColors[i]} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
-            Sources: {Array.isArray(sal?.sources_used) ? (sal.sources_used as string[]).join(', ') : 'Market estimate only'}
-            &nbsp;·&nbsp; Confidence: {sal?.confidence_score ? `${Math.round((sal.confidence_score as number) * 100)}%` : 'N/A'}
-          </div>
-        </div>
-      )}
+
 
       {/* Report display */}
       {editMode ? (

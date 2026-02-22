@@ -10,22 +10,20 @@ from typing import Optional, List
 logger = logging.getLogger(__name__)
 
 
-def _keyword_search_corpus(query: str, company: str, role: str, limit: int) -> dict:
+def _keyword_search_corpus(query: str, company: str, role: str, limit: int, **kwargs) -> dict:
     """
     Fallback: keyword search over the JSON interview corpus files.
     Returns docs in the same shape as ChromaDB results.
     """
-    try:
-        from config import settings
-        corpus_dir = settings.GLASSDOOR_CACHE_DIR
-    except Exception:
-        corpus_dir = "../data/interview_corpus"
+    from config import settings
+    corpus_dir = settings.GLASSDOOR_CACHE_DIR
 
     if not os.path.exists(corpus_dir):
         return {"documents": [], "metadatas": [], "distances": []}
 
     query_words = set(query.lower().split())
     company_lower = company.lower() if company else ""
+    industry_lower = kwargs.get("industry", "").lower()
     role_words = set(role.lower().split()) if role else set()
 
     scored: list[tuple[float, str, dict]] = []
@@ -73,6 +71,10 @@ def _keyword_search_corpus(query: str, company: str, role: str, limit: int) -> d
             query_overlap = query_words & text_words
             score += 0.05 * len(query_overlap)
 
+            # Industry match (fallback signal)
+            if industry_lower and industry_lower in text_lower:
+                score += 0.1
+
             if score > 0:
                 scored.append((score, text, meta))
 
@@ -94,12 +96,14 @@ def retrieve_relevant_experiences(
     query: str,
     company: str = "",
     role: str = "",
+    industry: str = "",
     limit: int = 5,
     use_mock: bool = False,
 ) -> dict:
     """
     Retrieve relevant interview experience chunks.
     Tries ChromaDB first; falls back to keyword search over JSON corpus.
+    If company-specific search yields nothing, it attempts a broader industry-based search.
     Returns a dict with 'documents', 'metadatas', and 'distances'.
     """
     if use_mock:
@@ -133,4 +137,11 @@ def retrieve_relevant_experiences(
 
     # Keyword-based fallback over JSON corpus
     logger.info(f"Using keyword search fallback for company='{company}', role='{role}'")
-    return _keyword_search_corpus(query, company, role, limit)
+    results = _keyword_search_corpus(query, company, role, limit, industry=industry)
+    
+    # If still no results and we have an industry, try a broad industry query
+    if not results.get("documents") and industry:
+        logger.info(f"Broadening search to industry: {industry}")
+        results = _keyword_search_corpus(f"{industry} interview process questions", "", role, limit, industry=industry)
+        
+    return results

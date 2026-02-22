@@ -78,7 +78,7 @@ function App() {
       </nav>
 
       {/* Main content */}
-      <main style={{ padding: '32px 24px', maxWidth: '1100px', margin: '0 auto' }}>
+      <main style={{ padding: '32px 24px', maxWidth: view === 'report' ? '100%' : '1100px', margin: '0 auto' }}>
         {view === 'input' && (
           <JobInput onJobSubmitted={handleJobSubmitted} />
         )}

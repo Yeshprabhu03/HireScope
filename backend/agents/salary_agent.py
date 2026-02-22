@@ -55,6 +55,7 @@ def estimate_market_salary_with_claude(
     seniority: str,
     skills: list[str],
     use_mock: bool = False,
+    provider: str = "gemini",
 ) -> dict:
     """Use Claude to reason about market compensation rates."""
     if use_mock:
@@ -86,7 +87,7 @@ Return ONLY valid JSON with this structure:
   "notes": "<brief 1-2 sentence explanation>"
 }}"""
 
-        return llm_generate_json(prompt, max_tokens=500, temperature=0.0)
+        return llm_generate_json(prompt, provider=provider, max_tokens=500, temperature=0.0)
 
     except Exception as e:
         logger.error(f"Gemini salary estimation failed: {e}", exc_info=True)
@@ -101,6 +102,7 @@ def analyze_salary(
     required_skills: list[str],
     salary_mentioned: Optional[str],
     use_mock: bool = False,
+    provider: str = "gemini",
 ) -> dict:
     """
     Triangulate salary from 3 sources and return unified intelligence.
@@ -141,7 +143,7 @@ def analyze_salary(
 
     # Source 3: Claude market estimate
     market = estimate_market_salary_with_claude(
-        job_title, company, location, seniority_level, required_skills, use_mock=use_mock
+        job_title, company, location, seniority_level, required_skills, use_mock=use_mock, provider=provider
     )
     salary_estimates.append(
         {"source": "Market Estimate", "min": market["min"], "max": market["max"],

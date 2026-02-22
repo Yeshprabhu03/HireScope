@@ -14,6 +14,7 @@ export default function JobInput({ onJobSubmitted }: Props) {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [selectedModel, setSelectedModel] = useState('gemini')
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -28,7 +29,10 @@ export default function JobInput({ onJobSubmitted }: Props) {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job_url: url.trim() }),
+        body: JSON.stringify({
+          job_url: url.trim(),
+          provider: selectedModel
+        }),
       })
       if (!res.ok) {
         const data = await res.json()
@@ -64,6 +68,42 @@ export default function JobInput({ onJobSubmitted }: Props) {
         border: '1px solid #e2e8f0',
       }}>
         <form onSubmit={handleSubmit}>
+
+          {/* Model Selector */}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px', color: '#374151', fontSize: '14px' }}>
+              Choose AI Model
+            </label>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              {[
+                { id: 'gemini', name: 'Gemini 2.0 Flash', desc: 'Fast & Free', icon: '⚡' },
+                { id: 'anthropic', name: 'Claude 3.5 Sonnet', desc: 'Best Reasoning', icon: '🧠' },
+                { id: 'openai', name: 'GPT-4o', desc: 'Standard', icon: '🤖' },
+              ].map(model => (
+                <div
+                  key={model.id}
+                  onClick={() => setSelectedModel(model.id)}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '8px',
+                    border: `2px solid ${selectedModel === model.id ? '#2563eb' : '#e2e8f0'}`,
+                    background: selectedModel === model.id ? '#eff6ff' : 'white',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <div style={{ fontWeight: '600', fontSize: '14px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>{model.icon}</span> {model.name}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                    {model.desc}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px', color: '#374151' }}>
             Job Posting URL
           </label>

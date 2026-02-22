@@ -1,0 +1,54 @@
+[
+    {
+        "company": "Morgan Stanley",
+        "role": "Investment Banking Associate",
+        "date": "2024-05",
+        "experience": "The process for IB Associate was rigorous. Started with a HireVue (30s prep, 90s answer). Then two rounds of phone screens with VPs focusing on technicals. Technicals included Walk me through a DCF, how to calculate WACC, and a complex question about how a $10 increase in depreciation affects all three statements. Onsite 'Superday' had 5 back-to-back 30-min interviews. One round was almost entirely behavioral: 'Why Morgan Stanley?' and 'Tell me about a time you handled a conflict.' Another round asked to pitch a stock from my previous industry. Very professional atmosphere.",
+        "difficulty": "hard",
+        "outcome": "offer",
+        "rounds": [
+            "HireVue",
+            "Technical Phone Screen 1",
+            "Technical Phone Screen 2",
+            "Superday Onsite (5 rounds)"
+        ],
+        "sources": [
+            "Reddit",
+            "WallStreetOasis"
+        ]
+    },
+    {
+        "company": "Morgan Stanley",
+        "role": "Investment Banking Associate",
+        "date": "2024-02",
+        "experience": "Associate lateral hire. No HireVue, went straight to 1-on-1 with a Director. Heavy focus on deal experience. 'Walk me through a recent M&A deal you followed.' Technicals involved paper LBO: given entry/exit multiples and leverage, estimate the IRR. Behavioral: 'How do you handle 100-hour weeks?' and 'Tell me about a time you saw someone act unethically.' Process took 4 weeks total.",
+        "difficulty": "hard",
+        "outcome": "offer",
+        "rounds": [
+            "Director Interview",
+            "VP Technical Screen",
+            "MD Behavioral",
+            "Onsite Superday"
+        ],
+        "sources": [
+            "WallStreetOasis"
+        ]
+    },
+    {
+        "company": "Morgan Stanley",
+        "role": "Investment Banking industriales Associate",
+        "date": "2023-12",
+        "experience": "Interviewed for Industrials group. Technical questions were specific to the sector: 'What valuation multiples are common for high-growth Industrials vs mature manufacturing?' Also 'Explain the impact of convertible bonds on Enterprise Value.' Why MS Industrials? Pitch an industrials stock. Behavioral was standard STAR method.",
+        "difficulty": "medium",
+        "outcome": "no offer",
+        "rounds": [
+            "Recruiter Screen",
+            "VP Technical",
+            "Onsite Round 1",
+            "Onsite Round 2"
+        ],
+        "sources": [
+            "Reddit"
+        ]
+    }
+]

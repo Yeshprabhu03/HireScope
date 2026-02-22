@@ -23,6 +23,8 @@ class JobAnalysisState(TypedDict):
     status: str
     error: str
     use_mock: bool
+    provider: str
+    model_display_name: str
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +50,8 @@ def parse_jd_node(state: JobAnalysisState) -> dict:
         from agents.jd_parser import parse_job_description
 
         use_mock = state.get("use_mock", False)
-        parsed = parse_job_description(state["html_content"], use_mock=use_mock)
+        provider = state.get("provider", "gemini")
+        parsed = parse_job_description(state["html_content"], use_mock=use_mock, provider=provider)
         return {"parsed_jd": parsed.model_dump(), "status": "parsed"}
     except Exception as e:
         logger.error(f"parse_jd_node failed: {e}", exc_info=True)
@@ -63,13 +66,16 @@ def parse_jd_node(state: JobAnalysisState) -> dict:
 
 def fetch_company_node(state: JobAnalysisState) -> dict:
     """Fetch company intelligence."""
-    company = (state.get("parsed_jd") or {}).get("company", "Unknown")
-    logger.info(f"[{state['job_id']}] Fetching company intel for '{company}'")
+    jd = state.get("parsed_jd") or {}
+    company = jd.get("company", "Unknown")
+    job_title = jd.get("job_title", "Unknown Role")
+    logger.info(f"[{state['job_id']}] Fetching company intel for '{company}' regarding '{job_title}'")
     try:
         from data_sources.company_intel import fetch_company_intel
 
         use_mock = state.get("use_mock", False)
-        intel = fetch_company_intel(company, use_mock=use_mock)
+        provider = state.get("provider", "gemini")
+        intel = fetch_company_intel(company, role=job_title, use_mock=use_mock, provider=provider)
         return {"company_intelligence": intel}
     except Exception as e:
         logger.error(f"fetch_company_node failed: {e}", exc_info=True)
@@ -84,6 +90,7 @@ def fetch_salary_node(state: JobAnalysisState) -> dict:
         from agents.salary_agent import analyze_salary
 
         use_mock = state.get("use_mock", False)
+        provider = state.get("provider", "gemini")
         salary = analyze_salary(
             job_title=jd.get("job_title", "Software Engineer"),
             company=jd.get("company", "Unknown"),
@@ -92,6 +99,7 @@ def fetch_salary_node(state: JobAnalysisState) -> dict:
             required_skills=jd.get("required_skills", []),
             salary_mentioned=jd.get("salary_mentioned"),
             use_mock=use_mock,
+            provider=provider,
         )
         return {"salary_intelligence": salary}
     except Exception as e:
@@ -102,14 +110,23 @@ def fetch_salary_node(state: JobAnalysisState) -> dict:
 def fetch_interviews_node(state: JobAnalysisState) -> dict:
     """Fetch interview intelligence via RAG."""
     jd = state.get("parsed_jd") or {}
+    company_intel = state.get("company_intelligence") or {}
     company = jd.get("company", "Unknown")
     role = jd.get("job_title", "Software Engineer")
-    logger.info(f"[{state['job_id']}] Fetching interview intel for '{role}' at '{company}'")
+    industry = company_intel.get("industry", "Technology")
+    logger.info(f"[{state['job_id']}] Fetching interview intel for '{role}' at '{company}' ({industry})")
     try:
         from agents.interview_agent import analyze_interviews
 
         use_mock = state.get("use_mock", False)
-        intel = analyze_interviews(company=company, role=role, use_mock=use_mock)
+        provider = state.get("provider", "gemini")
+        intel = analyze_interviews(
+            company=company, 
+            role=role, 
+            industry=industry, 
+            use_mock=use_mock, 
+            provider=provider
+        )
         return {"interview_intelligence": intel}
     except Exception as e:
         logger.error(f"fetch_interviews_node failed: {e}", exc_info=True)
@@ -128,6 +145,7 @@ def generate_report_node(state: JobAnalysisState) -> dict:
             salary_intel=state.get("salary_intelligence") or {},
             interview_intel=state.get("interview_intelligence") or {},
             job_id=state.get("job_id", ""),
+            model_name=state.get("model_display_name", "AI Assistant"),
         )
         return {"html_report": html, "status": "completed"}
     except Exception as e:
@@ -172,10 +190,21 @@ def _update_progress(jobs: dict, job_id: str, step_key: str, step_label: str, co
     }
 
 
+def _get_model_display_name(provider: str) -> str:
+    """Return a human-readable model name for the report."""
+    if provider == "gemini":
+        return "Gemini 2.0 Flash"
+    elif provider == "anthropic":
+        return "Claude 3.5 Sonnet"
+    elif provider == "openai":
+        return "GPT-4o"
+    return "AI Assistant"
+
+
 PIPELINE_TIMEOUT_SECONDS = 90  # Hard cap; prevents jobs from hanging forever
 
 
-async def run_job_analysis(job_id: str, job_url: str, jobs: dict = None) -> dict:
+async def run_job_analysis(job_id: str, job_url: str, provider: str = "gemini", jobs: dict = None) -> dict:
     """
     Run the full job analysis pipeline with progress tracking.
     Calls each node directly (sequential) so we can report progress between steps.
@@ -196,6 +225,8 @@ async def run_job_analysis(job_id: str, job_url: str, jobs: dict = None) -> dict
         "status": "starting",
         "error": "",
         "use_mock": settings.USE_MOCK_DATA,
+        "provider": provider,
+        "model_display_name": _get_model_display_name(provider),
     }
 
     completed_steps: list = []

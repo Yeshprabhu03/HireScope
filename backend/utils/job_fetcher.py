@@ -23,10 +23,7 @@ JS_RENDERED_DOMAINS = [
 
 # Domains that block all automated access — fail fast with a helpful message.
 BLOCKED_DOMAINS: dict[str, str] = {
-    "linkedin.com": (
-        "LinkedIn requires login to view job postings. "
-        "Please use a public job board instead: Greenhouse, Lever, Workday, Indeed, or Eightfold."
-    ),
+    # Removed linkedin.com block to allow public page fetching
 }
 
 HEADERS = {
@@ -35,10 +32,16 @@ HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/120.0.0.0 Safari/537.36"
     ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
     "Accept-Encoding": "gzip, deflate",
     "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Cache-Control": "max-age=0"
 }
 
 MOCK_JOB_HTML = """
@@ -117,10 +120,23 @@ def _detect_login_wall(html: str, url: str) -> bool:
     title = soup.title.string if soup.title else ""
 
     if title and any(indicator.lower() in title.lower() for indicator in ["Sign In", "Log In", "Join"]):
-        return True
+        # If it's a linkedin public job, the title is usually "Company hiring Role..."
+        # An actual authwall title is exactly "LinkedIn Login, Sign in | LinkedIn"
+        if "linkedin.com" in url and ("hiring" in title.lower() or "jobs" in title.lower()):
+            pass # Keep going, it's a real job posting
+        else:
+            return True
 
     indicator_count = sum(1 for ind in login_indicators if ind.lower() in text.lower())
-    if indicator_count >= 2:
+    
+    # LinkedIn public pages naturally have "Sign in" and "Join now" in the header nav
+    threshold = 3 if "linkedin.com" in url else 2
+    if indicator_count >= threshold:
+        # One last safety check: if the schema or og:title exists with a real job, don't block it
+        if "linkedin.com" in url and soup.find("meta", property="og:title"):
+            og_title = soup.find("meta", property="og:title").get("content", "")
+            if "hiring" in og_title.lower() or "job" in og_title.lower():
+                return False
         return True
 
     return False
@@ -137,20 +153,28 @@ def fetch_job_html_with_playwright(url: str) -> str:
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled"]
+            )
             context = browser.new_context(
                 user_agent=HEADERS["User-Agent"],
                 locale="en-US",
+                viewport={"width": 1920, "height": 1080},
+                timezone_id="America/New_York",
             )
             page = context.new_page()
             # Use domcontentloaded instead of networkidle — networkidle
             # hangs on sites like LinkedIn that continuously load resources
             page.goto(url, wait_until="domcontentloaded", timeout=15000)
             # Brief wait to allow JS components to render
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(5000)
             html = page.content()
             browser.close()
-            logger.info(f"Playwright fetched {len(html)} chars from {url}")
+            if len(html) < 500:
+                logger.warning(f"Playwright fetched very short content ({len(html)} chars) from {url}. Possible block.")
+            else:
+                logger.info(f"Playwright fetched {len(html)} chars from {url}")
             return html
     except Exception as e:
         logger.error(f"Playwright fetch failed for {url}: {e}")
@@ -161,27 +185,36 @@ def fetch_job_html_with_playwright(url: str) -> str:
 def fetch_job_html(url: str) -> str:
     """
     Fetch HTML content from a job posting URL.
-    Uses Playwright for JS-rendered sites, requests for static pages.
+    Uses requests for all pages, with advanced headers.
     Retries up to 2 times with exponential backoff.
     """
     logger.info(f"Fetching job HTML from: {url}")
-    if _needs_browser(url):
-        return fetch_job_html_with_playwright(url)
+    
+    def _fetch_with_requests():
+        try:
+            print(f"Fallback to requests for {url}")
+            session = requests.Session()
+            session.headers.update(HEADERS)
+            print("Sending GET request...")
+            response = session.get(url, timeout=15)
+            print("GET request completed. Checking status...")
+            response.raise_for_status()
+            logger.info(f"Successfully fetched HTML via requests ({len(response.text)} chars)")
+            return response.text
+        except requests.exceptions.HTTPError as e:
+            logger.warning(f"HTTP error fetching {url}: {e}")
+            raise
+        except requests.exceptions.ConnectionError as e:
+            logger.warning(f"Connection error fetching {url}: {e}")
+            raise
+        except requests.exceptions.Timeout as e:
+            logger.warning(f"Timeout fetching {url}: {e}")
+            raise
 
-    try:
-        response = requests.get(url, headers=HEADERS, timeout=10)
-        response.raise_for_status()
-        logger.info(f"Successfully fetched HTML ({len(response.text)} chars)")
-        return response.text
-    except requests.exceptions.HTTPError as e:
-        logger.warning(f"HTTP error fetching {url}: {e}")
-        raise
-    except requests.exceptions.ConnectionError as e:
-        logger.warning(f"Connection error fetching {url}: {e}")
-        raise
-    except requests.exceptions.Timeout as e:
-        logger.warning(f"Timeout fetching {url}: {e}")
-        raise
+    # Playwright causes deadlocks/segfaults on this environment.
+    # We bypass it and directly rely on requests.
+    return _fetch_with_requests()
+
 
 
 def extract_text_from_html(html: str) -> str:
@@ -229,15 +262,18 @@ def get_job_content(url: str, use_mock: bool = False) -> tuple[str, str]:
 
         text = extract_text_from_html(html)
 
-        # If we got almost no text, try Playwright as a fallback
-        if len(text.strip()) < 100:
-            logger.warning("Fetched page has very little text — may be bot-blocked. Trying Playwright fallback.")
-            html = fetch_job_html_with_playwright(url)
+        # If the extracted visual text is very short (e.g. an SPA React/Angular page),
+        # we completely bypass Playwright (since headless browsers deadlock the server).
+        # We simply pass the raw HTML payload forward so the LLM can extract
+        # the structured job details exactly from the embedded JSON state tags.
+        if len(text.strip()) < 500:
+            logger.warning("Fetched page has very little visual text (Likely a JS-rendered SPA). Passing raw HTML to parser.")
+            text = html
 
-            if _detect_login_wall(html, url):
-                raise ValueError(f"The job page at {url} requires login/authentication to view.")
-
-            text = extract_text_from_html(html)
+        # Ensure text is not empty before returning
+        if not text.strip():
+             text = html
+             text = html
 
         return html, text
     except ValueError:

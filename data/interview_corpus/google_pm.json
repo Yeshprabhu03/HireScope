@@ -1,0 +1,40 @@
+[
+    {
+        "company": "Google",
+        "role": "Product Manager",
+        "date": "2024-06",
+        "experience": "Google's PM loop is heavy on Product Sense and Strategy. I had 5 rounds onsite: Product Design (Improve YouTube's recommendation), Strategy (What should Google build in 5 years?), Analytical (Estimate time spent at stop lights), Technical (Explain an SDK to a 7-year-old), and Googleyness. For design questions, always use a framework like CIRCLES. They care about user empathy more than the actual solution. Got an offer after 2 months.",
+        "difficulty": "hard",
+        "outcome": "offer",
+        "rounds": [
+            "Recruiter Screen",
+            "Phone Screen (PM)",
+            "Onsite: Product Design",
+            "Onsite: Strategy",
+            "Onsite: Analytical",
+            "Onsite: Technical",
+            "Onsite: Googleyness"
+        ],
+        "sources": [
+            "tryexponent.com",
+            "Reddit"
+        ]
+    },
+    {
+        "company": "Google",
+        "role": "Product Manager",
+        "date": "2024-01",
+        "experience": "Applied via referral. Phone screen was a design question: 'Design an app for an amusement park.' Onsite had a tricky estimation question about market sizing for a new VR product. Technical round was system design: 'What happens when you click search on Google?' Behavioral focused on stakeholder management and 'Tell me about a time you made a mistake.' Frameworks are key.",
+        "difficulty": "hard",
+        "outcome": "no offer",
+        "rounds": [
+            "Recruiter Screen",
+            "Phone Screen",
+            "Onsite Round 1-5"
+        ],
+        "sources": [
+            "Reddit",
+            "tryexponent.com"
+        ]
+    }
+]

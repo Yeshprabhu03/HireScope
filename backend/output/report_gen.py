@@ -51,6 +51,24 @@ def _salary_bar_svg(s_min: int, s_median: int, s_max: int) -> str:
         f'xmlns="http://www.w3.org/2000/svg">{rows}</svg></div>'
     )
 
+def _render_syllabus_category(cat: dict) -> str:
+    category = cat.get("category", "General")
+    topics = cat.get("topics", [])
+    topic_html = "".join([
+        f'<div style="margin-bottom: 12px;"><strong style="color: #334155; font-size: 13px;">{t.get("title")}</strong><p style="margin: 4px 0 0 0; font-size: 13px; color: #475569; line-height: 1.5;">{t.get("details")}</p></div>'
+        for t in topics
+    ])
+    return f'''
+    <div style="margin-bottom: 24px;">
+        <span style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e2e8f0; display: block; padding-bottom: 4px; margin-bottom: 12px;">{category}</span>
+        <div style="padding-left: 4px;">{topic_html}</div>
+    </div>
+    '''
+
+def _render_company_value(val: dict) -> str:
+    trait = val.get("trait", "")
+    context = val.get("context", "")
+    return f'<div style="margin-bottom: 10px;"><strong style="font-size: 13px; color: #0f172a;">{trait}</strong>: <span style="font-size: 13px; color: #475569;">{context}</span></div>'
 
 def generate_html_report(
     parsed_jd: dict,
@@ -59,6 +77,7 @@ def generate_html_report(
     interview_intel: dict,
     job_id: str = "",
     analysis_start: float = 0.0,
+    model_name: str = "AI Assistant",
 ) -> str:
     """Generate a complete, styled HTML report from all analysis data."""
 
@@ -95,7 +114,10 @@ def generate_html_report(
     company_ceo = company_intel.get("ceo", "N/A")
     company_hq = company_intel.get("headquarters", "N/A")
     company_employees = company_intel.get("employees", "N/A")
-    company_revenue = company_intel.get("revenue", "N/A")
+    company_market_cap = company_intel.get("market_cap", "N/A")
+    company_source = company_intel.get("source", "Wikipedia API")
+    company_business_unit = company_intel.get("business_unit_overview", "N/A")
+    company_networking = company_intel.get("linkedin_networking", "N/A")
     company_industry = company_intel.get("industry", "Technology")
     company_culture = company_intel.get("culture_highlights", [])
     company_news = company_intel.get("recent_news", [])
@@ -108,6 +130,15 @@ def generate_html_report(
     interview_overview = interview_intel.get("process_overview", "")
     interview_source = interview_intel.get("source", "")
     interview_data_warning = interview_intel.get("data_warning", False)
+    interview_source_count = interview_intel.get("source_count", 0)
+    interview_confidence = int(float(interview_intel.get("confidence_score", 0.5)) * 100)
+    interview_platforms = interview_intel.get("identified_sources", [])
+    
+    roadmap = interview_intel.get("mastery_roadmap", {})
+    tech_syllabus = roadmap.get("technical_syllabus", [])
+    non_tech_syllabus = roadmap.get("non_technical_syllabus", [])
+    company_values = roadmap.get("company_values", [])
+    gap_analysis = roadmap.get("gap_analysis", {})
 
     generated_at = datetime.now().strftime("%B %d, %Y at %I:%M %p")
 
@@ -143,7 +174,7 @@ def generate_html_report(
       background: var(--gray-50);
       line-height: 1.6;
     }}
-    .container {{ max-width: 960px; margin: 0 auto; padding: 24px 16px; }}
+    .container {{ max-width: 100%; margin: 0 auto; padding: 24px 32px; }}
 
     /* Header */
     .report-header {{
@@ -299,23 +330,71 @@ def generate_html_report(
     <h1>{job_title}</h1>
     <h2>{company}</h2>
     <div class="meta-tags">
-      <span class="meta-tag">📍 {location}</span>
-      <span class="meta-tag">⭐ {seniority}</span>
-      <span class="meta-tag">🏠 {remote_policy}</span>
-      <span class="meta-tag">💼 {employment_type}</span>
-      <span class="meta-tag">⏱ {experience_str} years exp</span>
+      <span class="meta-tag">Location: {location}</span>
+      <span class="meta-tag">Level: {seniority}</span>
+      <span class="meta-tag">Remote: {remote_policy}</span>
+      <span class="meta-tag">Type: {employment_type}</span>
+      <span class="meta-tag">Exp: {experience_str} years</span>
+      <span class="meta-tag">Model: {model_name}</span>
     </div>
+  </div>
+
+  <!-- Company Intelligence -->
+  <div class="card">
+    <div class="card-title">Company Intelligence</div>
+    <p style="color: var(--gray-700); margin-bottom: 12px; font-size: 14px;"><strong>About:</strong> {company_desc}</p>
+    {f'<p style="color: var(--gray-700); margin-bottom: 16px; font-size: 14px;"><strong>Business Unit:</strong> {company_business_unit}</p>' if company_business_unit and company_business_unit != 'N/A' else ''}
+    <div class="company-info-grid" style="margin-bottom: 16px;">
+      <div class="info-row">
+        <span class="info-label">CEO</span>
+        <span class="info-value">{company_ceo}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Industry</span>
+        <span class="info-value">{company_industry}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Headquarters</span>
+        <span class="info-value">{company_hq}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Employees</span>
+        <span class="info-value">{company_employees}</span>
+      </div>
+      <div class="info-row" style="grid-column: span 2;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <span class="info-label">Market Cap</span>
+            <span style="font-size: 11px; color: var(--gray-600); font-style: italic;">Source: {company_source}</span>
+        </div>
+        <span class="info-value">{company_market_cap}</span>
+      </div>
+    </div>
+    <div class="two-col">
+      <div>
+        <strong style="font-size: 14px; display: block; margin-bottom: 8px;">Culture</strong>
+        <ul class="styled-list">
+          {_fmt_list(company_culture, "No culture data available")}
+        </ul>
+      </div>
+      <div>
+        <strong style="font-size: 14px; display: block; margin-bottom: 8px;">Recent News</strong>
+        <ul class="styled-list">
+          {_fmt_list(company_news, "No recent news available")}
+        </ul>
+      </div>
+    </div>
+    {f'<div style="margin-top: 16px; padding: 12px; background: #eff6ff; border-radius: 8px; border-left: 4px solid #3b82f6;"><strong style="font-size: 14px; display: block; margin-bottom: 4px; color: #1e40af;">LinkedIn Networking Target</strong><p style="font-size: 13px; color: #1e3a8a; margin: 0;">{company_networking}</p></div>' if company_networking and company_networking != 'N/A' else ''}
   </div>
 
   <!-- Skills -->
   <div class="card">
-    <div class="card-title">🛠 Required Skills</div>
+    <div class="card-title">Required Skills</div>
     <div>{skill_badges if skill_badges else '<span class="badge badge-warning">Not specified</span>'}</div>
   </div>
 
   <!-- Responsibilities -->
   <div class="card">
-    <div class="card-title">📋 Key Responsibilities</div>
+    <div class="card-title">Key Responsibilities</div>
     <ul class="styled-list">
       {_fmt_list(responsibilities)}
     </ul>
@@ -323,7 +402,7 @@ def generate_html_report(
 
   <!-- Salary Intelligence -->
   <div class="card">
-    <div class="card-title">💰 Salary Intelligence</div>
+    <div class="card-title">Salary Intelligence</div>
     <div class="salary-grid">
       <div class="salary-stat">
         <div class="value">{salary_min}</div>
@@ -362,87 +441,97 @@ def generate_html_report(
     ''' if salary_breakdown else ''}
   </div>
 
-  <!-- Company Intelligence -->
-  <div class="card">
-    <div class="card-title">🏢 Company Intelligence</div>
-    <p style="color: var(--gray-700); margin-bottom: 16px; font-size: 14px;">{company_desc}</p>
-    <div class="company-info-grid" style="margin-bottom: 16px;">
-      <div class="info-row">
-        <span class="info-label">CEO</span>
-        <span class="info-value">{company_ceo}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Industry</span>
-        <span class="info-value">{company_industry}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Headquarters</span>
-        <span class="info-value">{company_hq}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Employees</span>
-        <span class="info-value">{company_employees}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Revenue</span>
-        <span class="info-value">{company_revenue}</span>
-      </div>
-    </div>
-    <div class="two-col">
-      <div>
-        <strong style="font-size: 14px; display: block; margin-bottom: 8px;">🌱 Culture</strong>
-        <ul class="styled-list">
-          {_fmt_list(company_culture, "No culture data available")}
-        </ul>
-      </div>
-      <div>
-        <strong style="font-size: 14px; display: block; margin-bottom: 8px;">📰 Recent News</strong>
-        <ul class="styled-list">
-          {_fmt_list(company_news, "No recent news available")}
-        </ul>
-      </div>
-    </div>
-  </div>
+
 
   <!-- Interview Intelligence -->
   <div class="card">
-    <div class="card-title">🎯 Interview Intelligence</div>
+    <div class="card-title">Interview Intelligence</div>
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
       <span class="badge difficulty-{interview_difficulty.lower()}" style="font-size: 13px; padding: 4px 14px;">
         Difficulty: {interview_difficulty}
       </span>
+      {f'<span class="badge" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0;">✓ Verified Data ({interview_source_count} reviews)</span>' if not interview_data_warning and interview_source_count > 0 else f'<span class="badge" style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca;">⚠ Estimated Guide</span>'}
+    </div>
+    <div class="confidence-bar" style="margin-bottom: 12px;">
+      <div class="confidence-fill" style="width: {interview_confidence}%; background: {'#22c55e' if interview_confidence > 70 else '#eab308' if interview_confidence > 40 else '#ef4444'};"></div>
     </div>
     {f'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#92400e;">⚠ {interview_source}</div>' if interview_data_warning else f'<p style="font-size:13px;color:var(--gray-600);margin-bottom:12px;">Source: {interview_source}</p>'}
 
     {f'<p style="color: var(--gray-700); font-size: 14px; margin-bottom: 16px;">{interview_overview}</p>' if interview_overview else ''}
 
     <div style="margin-bottom: 20px;">
-      <strong style="font-size: 14px; display: block; margin-bottom: 10px;">📅 Interview Process</strong>
+      <strong style="font-size: 14px; display: block; margin-bottom: 10px;">Interview Process</strong>
       <div class="rounds-list">
         {"".join(f'<div class="round-item"><div class="round-num">{i+1}</div><span style="font-size: 14px;">{r}</span></div>' for i, r in enumerate(interview_rounds))}
       </div>
     </div>
 
+    {f'''
+    <div style="margin-bottom: 32px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+      <div style="background: #f8fafc; padding: 16px 20px; border-bottom: 1px solid #e2e8f0;">
+        <strong style="font-size: 15px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+          Preparation Mastery Roadmap
+        </strong>
+      </div>
+      
+      <div style="padding: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px;">
+        <!-- Left Col: Technical -->
+        <div>
+          <div style="margin-bottom: 24px; color: #1e293b; font-weight: 700; font-size: 14px;">Technical Core Mastery</div>
+          { "".join([_render_syllabus_category(cat) for cat in tech_syllabus]) }
+        </div>
+        
+        <!-- Right Col: Non-Technical & Values -->
+        <div>
+          <div style="margin-bottom: 24px; color: #1e293b; font-weight: 700; font-size: 14px;">Product & Leadership Mastery</div>
+          { "".join([_render_syllabus_category(cat) for cat in non_tech_syllabus]) }
+          
+          <div style="margin-top: 32px; background: #f1f5f9; border-radius: 8px; padding: 16px;">
+            <div style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">Company-Specific Values</div>
+            { "".join([_render_company_value(val) for val in company_values]) }
+          </div>
+        </div>
+      </div>
+
+      <!-- Gap Analysis -->
+      <div style="background: #fef2f2; border-top: 1px solid #fecaca; padding: 20px 24px;">
+        <div style="display: flex; gap: 20px;">
+          <div style="flex: 1;">
+            <strong style="font-size: 13px; color: #991b1b; display: block; margin-bottom: 8px;">Honest Gaps to Address</strong>
+            <p style="font-size: 13px; color: #b91c1c; line-height: 1.5; margin: 0;">{gap_analysis.get('summary', 'Ensure you are comfortable translating technical trade-offs into business value.')}</p>
+          </div>
+          <div style="flex: 1; background: rgba(255,255,255,0.5); border-radius: 6px; padding: 12px 16px; border: 1px solid #fecaca;">
+            <strong style="font-size: 12px; color: #991b1b; display: block; margin-bottom: 8px; text-transform: uppercase;">Priority Prep Focus</strong>
+            <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #991b1b; font-weight: 600;">
+              {"".join(f'<li style="margin-bottom: 4px;">{p}</li>' for p in gap_analysis.get('priorities', []))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    ''' if tech_syllabus or non_tech_syllabus else ''}
+
     <div class="two-col">
       <div>
-        <strong style="font-size: 14px; display: block; margin-bottom: 8px;">💻 Technical Questions</strong>
+        <strong style="font-size: 14px; display: block; margin-bottom: 8px;">Technical Questions</strong>
         <ul class="styled-list">
           {_fmt_list(tech_questions)}
         </ul>
       </div>
       <div>
-        <strong style="font-size: 14px; display: block; margin-bottom: 8px;">🤝 Behavioral Questions</strong>
+        <strong style="font-size: 14px; display: block; margin-bottom: 8px;">Behavioral Questions</strong>
         <ul class="styled-list">
           {_fmt_list(behavioral_questions)}
         </ul>
       </div>
     </div>
 
-    <div style="margin-top: 20px;">
-      <strong style="font-size: 14px; display: block; margin-bottom: 8px;">💡 Preparation Tips</strong>
+    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--gray-100);">
+      <strong style="font-size: 14px; display: block; margin-bottom: 8px;">Preparation Tips</strong>
       <ul class="styled-list">
         {_fmt_list(interview_tips)}
       </ul>
+      {f'<p style="font-size: 12px; color: var(--gray-600); margin-top: 16px; font-style: italic;">Analyzed candidate insights from: {", ".join(interview_platforms)}</p>' if interview_platforms else ''}
     </div>
   </div>
 

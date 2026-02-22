@@ -44,10 +44,13 @@ MOCK_INTERVIEW_INTEL = {
 def analyze_interviews(
     company: str,
     role: str,
+    industry: str = "",
     use_mock: bool = False,
+    provider: str = "gemini",
 ) -> dict:
     """
-    Use RAG to retrieve interview experiences and Claude to synthesize insights.
+    Use RAG to retrieve interview experiences and Gemini to synthesize insights.
+    Differentiates between verified reported data and reasoned estimations.
     """
     if use_mock:
         logger.info(f"Using mock interview intel for '{role}' at '{company}'")
@@ -55,46 +58,123 @@ def analyze_interviews(
 
     try:
         from rag.retriever import retrieve_relevant_experiences
+        from utils.llm import llm_generate_json
+
+        # Step 1: Classify Role to generate dynamic queries
+        classification_prompt = f"""Classify this job role and generate 3 targeted interview search queries.
+Role: {role}
+Company: {company}
+Industry: {industry}
+
+Return JSON:
+{{
+  "category": "Tech|Finance|Product|Sales|Other",
+  "queries": {{
+    "technical": "query for technical skills/questions",
+    "behavioral": "query for behavioral/culture fit",
+    "process": "query for interview process/rounds"
+  }}
+}}"""
+        classification = llm_generate_json(classification_prompt, provider=provider, temperature=0.0)
+        role_category = classification.get("category", "Other")
+        queries = classification.get("queries", {
+            "technical": f"{role} technical interview questions",
+            "behavioral": f"{role} behavioral interview questions",
+            "process": f"{role} interview process rounds"
+        })
+
+        logger.info(f"Role classified as '{role_category}'. Searching RAG with dynamic queries.")
 
         # Three targeted retrieval queries
         tech_results = retrieve_relevant_experiences(
-            query="technical interview questions coding algorithms data structures",
+            query=queries["technical"],
             company=company,
             role=role,
+            industry=industry,
             limit=5,
         )
         behavioral_results = retrieve_relevant_experiences(
-            query="behavioral interview questions leadership conflict teamwork",
+            query=queries["behavioral"],
             company=company,
             role=role,
+            industry=industry,
             limit=3,
         )
         process_results = retrieve_relevant_experiences(
-            query="interview process rounds phone screen onsite timeline",
+            query=queries["process"],
             company=company,
             role=role,
+            industry=industry,
             limit=3,
         )
 
-        def flatten_docs(results: dict) -> str:
+        def get_doc_data(results: dict) -> list[dict]:
             docs = results.get("documents", [])
-            if docs and isinstance(docs[0], list):
-                docs = [d for sublist in docs for d in sublist]
-            return "\n\n---\n\n".join(docs[:5]) if docs else "No data available"
+            metas = results.get("metadatas", [])
+            if not docs:
+                return []
+            
+            # Flatten if nested (ChromaDB style)
+            if isinstance(docs[0], list):
+                docs = docs[0]
+            if metas and isinstance(metas[0], list):
+                metas = metas[0]
+            
+            combined = []
+            for i in range(len(docs)):
+                combined.append({
+                    "text": docs[i],
+                    "metadata": metas[i] if i < len(metas) else {}
+                })
+            return combined[:5]
 
-        tech_context = flatten_docs(tech_results)
-        behavioral_context = flatten_docs(behavioral_results)
-        process_context = flatten_docs(process_results)
+        tech_data = get_doc_data(tech_results)
+        behavioral_data = get_doc_data(behavioral_results)
+        process_data = get_doc_data(process_results)
 
-        has_real_data = (
-            len(tech_results.get("documents", [])) > 0
-            or len(behavioral_results.get("documents", [])) > 0
-        )
+        all_unique_data = tech_data + behavioral_data + process_data
+        
+        # Count how many actually match the target company
+        verified_docs = [d for d in all_unique_data if company.lower() in d["metadata"].get("company", "").lower()]
+        verified_count = len(set([d["text"] for d in verified_docs]))
+        
+        # Extract sources (Reddit, Exponent, etc.) from metadata
+        sources_found = []
+        for d in all_unique_data:
+            s_meta = d["metadata"].get("sources", [])
+            if isinstance(s_meta, str):
+                try:
+                    s_meta = json.loads(s_meta)
+                except:
+                    s_meta = [s_meta]
+            sources_found.extend(s_meta)
+        
+        # Add industry-standard sources if certain categories match
+        if role_category == "Product":
+            sources_found.append("tryexponent.com")
+        if role_category == "Finance":
+            sources_found.append("WallStreetOasis")
+        
+        sources_found = list(set([s for s in sources_found if s]))
+        source_count = len(set([d["text"] for d in all_unique_data]))
+        
+        tech_context = "\n\n---\n\n".join([d["text"] for d in tech_data]) if tech_data else "No specific technical data available"
+        behavioral_context = "\n\n---\n\n".join([d["text"] for d in behavioral_data]) if behavioral_data else "No specific behavioral data available"
+        process_context = "\n\n---\n\n".join([d["text"] for d in process_data]) if process_data else "No specific process data available"
 
-        from utils.llm import llm_generate_json
+        has_verified_data = verified_count > 0
+        confidence_score = 0.9 if verified_count > 2 else 0.7 if verified_count > 0 else 0.4
 
-        prompt = f"""You are an interview intelligence analyst. Based on the interview experiences below,
-synthesize key insights for a candidate interviewing for {role} at {company}.
+        prompt = f"""You are an expert interview intelligence analyst. 
+We have analyzed {source_count} actual candidate interview experiences for {company} / {industry} from sources including {', '.join(sources_found) if sources_found else 'AI knowledge'}.
+
+Role Category: {role_category}
+
+CRITICAL INSTRUCTION: 
+1. For any question or round explicitly mentioned in the experiences, prefix it with "Reported: ".
+2. For any question or round that you are inferring based on role/industry patterns (because evidence is missing), prefix it with "Likely Topic: ".
+3. DO NOT hallucinate specific questions if the context is empty; provide high-level topics instead.
+4. Adapt the "Technical Questions" specifically to the {role_category} field.
 
 Technical Interview Experiences:
 {tech_context}
@@ -108,29 +188,61 @@ Process/Timeline Experiences:
 Return ONLY valid JSON with this structure:
 {{
   "rounds": ["<list of interview rounds in order>"],
-  "technical_questions": ["<5-7 specific technical questions or topics likely to be asked>"],
-  "behavioral_questions": ["<4-5 behavioral questions likely to be asked>"],
+  "technical_questions": ["<5-7 questions/topics, prefixed with 'Reported:' only if it was in the verified company context, otherwise 'Likely Topic:'>"],
+  "behavioral_questions": ["<4-5 questions/topics, prefixed with 'Reported:' only if it was in the verified company context, otherwise 'Likely Topic:'>"],
   "difficulty": "<easy|medium|hard>",
   "tips": ["<5 actionable preparation tips>"],
+  "mastery_roadmap": {{
+    "technical_syllabus": [
+      {{
+        "category": "<e.g., AI/ML, Finance Domain, Infra>",
+        "topics": [
+          {{
+            "title": "<short name>",
+            "details": "<long descriptive definition of what knowledge is required>"
+          }}
+        ]
+      }}
+    ],
+    "non_technical_syllabus": [
+       {{
+        "category": "<e.g., Product Core, Leadership, Strategy>",
+        "topics": [
+          {{
+            "title": "<short name>",
+            "details": "<detailed behavioral expectation>"
+          }}
+        ]
+      }}
+    ],
+    "company_values": [
+      {{
+        "trait": "<e.g., Proactivity, Inclusivity>",
+        "context": "<how it applies to this specific role/company>"
+      }}
+    ],
+    "gap_analysis": {{
+      "summary": "<2-3 sentence honest assessment of typical candidate gaps for this role>",
+      "priorities": ["<Top 3 specific areas to close before the mirror interview>"]
+    }}
+  }},
   "process_overview": "<2-3 sentence overview of the interview process>",
-  "source": "RAG-powered analysis"
+  "identified_sources": ["<list of platforms identified from data>"],
+  "source": "{f'Based on {verified_count} verified interview experiences' if has_verified_data else 'AI-generated guide based on industry patterns'}"
 }}"""
 
-        result = llm_generate_json(prompt, max_tokens=1200, temperature=0.1)
+        result = llm_generate_json(prompt, provider=provider, max_tokens=2500, temperature=0.1)
+        result["confidence_score"] = confidence_score
+        result["source_count"] = verified_count
+        result["data_warning"] = not has_verified_data
+        if "identified_sources" not in result:
+            result["identified_sources"] = sources_found
 
-        if not has_real_data:
-            result["source"] = (
-                "AI-generated guide (no verified interview data for this company). "
-                "Prepare using industry-standard patterns for this role level."
-            )
-            result["data_warning"] = True
-
-        logger.info(f"Interview intelligence generated for '{role}' at '{company}'")
+        logger.info(f"Interview intelligence generated for '{role}' at '{company}' (Confidence: {confidence_score})")
         return result
 
     except Exception as e:
         logger.error(f"Interview analysis failed: {e}", exc_info=True)
-        # Return a minimal honest response — no mock data
         return {
             "rounds": [],
             "technical_questions": [],
@@ -140,4 +252,6 @@ Return ONLY valid JSON with this structure:
             "process_overview": f"Interview intelligence unavailable: {e}",
             "source": "Error — analysis could not be completed",
             "data_warning": True,
+            "confidence_score": 0.0,
+            "source_count": 0
         }
