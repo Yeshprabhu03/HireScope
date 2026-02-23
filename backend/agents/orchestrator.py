@@ -172,8 +172,8 @@ def fetch_interviews_node(state: JobAnalysisState) -> dict:
         use_mock = state.get("use_mock", False)
         provider = state.get("provider", "gemini")
         intel = analyze_interviews(
+            job_title=role, 
             company=company, 
-            role=role, 
             industry=industry, 
             parsed_jd=jd,
             company_intel=company_intel,
