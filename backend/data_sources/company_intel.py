@@ -178,10 +178,12 @@ def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, us
         from config import settings
         from utils.llm import llm_generate_json
 
+        bu = parsed_jd.get('business_unit', 'N/A') if parsed_jd else 'N/A'
+        bu_context = f" The candidate is applying to the '{bu}' business unit. " if bu and bu != 'N/A' else ""
         jd_context = f"\n\nContext - Job Description: {parsed_jd}" if parsed_jd else ""
         
         if settings.GEMINI_API_KEY != "placeholder":
-            prompt = f"""Provide company intelligence and networking strategy for the company "{company}", specifically regarding the role of "{role}".{jd_context}
+            prompt = f"""Provide company intelligence and networking strategy for the company "{company}", specifically regarding the role of "{role}".{bu_context}{jd_context}
 Return ONLY valid JSON with this exact structure (no markdown, no extra text):
 {{
   "ceo": "<current CEO full name, or 'N/A' if unknown>",
@@ -191,7 +193,7 @@ Return ONLY valid JSON with this exact structure (no markdown, no extra text):
   "ticker": "<Stock ticker symbol if public, e.g. 'AAPL', 'MSFT', 'ADBE', or 'N/A' if private/unknown>",
   "industry": "<primary industry sector>",
   "business_model": "<1-2 sentences about how they make money>",
-  "business_unit_overview": "<Brief intro to the exact business unit/department handling the '{role}'. STRICTLY extract this from the Job Description Context if provided. Do NOT write generic/vague templates like 'It could be within...'. If utterly unknown, say 'N/A'>",
+  "business_unit_overview": "<Brief intro to the exact business unit/department handling the '{role}'. Explaining what this specific business unit does at {company}. If the unit is 'N/A', STRICTLY say 'N/A' and do NOT invent a generic template.>",
   "linkedin_networking": "<1-2 sentences advising the user which specific organizational teams, directors, or managers they should try connecting with on LinkedIn for the '{role}' role>",
   "culture_highlights": ["<3-4 key culture traits based on known reputation>"],
   "recent_news": ["<2-3 real, verifiable recent events about this company>"]

@@ -14,6 +14,7 @@ class ParsedJD(BaseModel):
     job_title: str = Field(default="Unknown", description="Job title/position name")
     company: str = Field(default="Unknown", description="Company name")
     location: str = Field(default="Unknown", description="Job location (city, state, remote)")
+    business_unit: str = Field(default="N/A", description="Specific business unit, product team, or department mentioned in the JD (e.g., 'Digital Experience Cloud', 'AWS', 'Investment Banking'). Use 'N/A' if truly not specified.")
     seniority_level: str = Field(
         default="mid",
         description="Seniority level: intern, junior, mid, senior, staff, principal, director",
@@ -50,6 +51,7 @@ MOCK_PARSED_JD = ParsedJD(
     job_title="Senior Software Engineer",
     company="Google",
     location="Mountain View, CA",
+    business_unit="Google Cloud Platform",
     seniority_level="senior",
     required_skills=["Python", "Java", "Go", "Distributed Systems", "Cloud Computing"],
     years_experience_min=5,
