@@ -95,8 +95,15 @@ def fetch_wikipedia_summary(company: str, is_retry: bool = False) -> Optional[di
                     logger.info(f"Hit disambiguation page for '{search_name}', retrying with ' (company)' suffix")
                     return fetch_wikipedia_summary(f"{search_name} (company)", is_retry=True)
                 
-                # Smart truncation: keep full sentences within ~600 chars limit
                 raw_extract = data.get("extract", "")
+                
+                # Check for mismatched entity types (e.g. Adobe mudbrick instead of Adobe Inc.)
+                corporate_keywords = ["company", "corporation", "inc", "llc", "ltd", "business", "technology", "software", "bank", "financial", "firm", "enterprise", "subsidiary", "brand"]
+                if not is_retry and raw_extract and not any(kw in raw_extract.lower() for kw in corporate_keywords):
+                    logger.info(f"Summary for '{search_name}' lacks corporate keywords. Retrying with ' (company)'.")
+                    return fetch_wikipedia_summary(f"{search_name} (company)", is_retry=True)
+                
+                # Smart truncation: keep full sentences within ~600 chars limit
                 if len(raw_extract) > 600:
                     # Find the last period before 600 chars
                     last_period = raw_extract[:600].rfind(".")

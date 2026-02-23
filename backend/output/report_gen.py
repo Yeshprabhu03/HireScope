@@ -368,7 +368,7 @@ def generate_html_report(
   <div class="card">
     <div class="card-title">Company Intelligence</div>
     <p style="color: var(--gray-700); margin-bottom: 12px; font-size: 14px;"><strong>About:</strong> {company_desc}</p>
-    {f'<p style="color: var(--gray-700); margin-bottom: 16px; font-size: 14px;"><strong>Business Unit:</strong> {company_business_unit}</p>' if company_business_unit and company_business_unit != 'N/A' else ''}
+    {f'<p style="color: var(--gray-700); margin-bottom: 16px; font-size: 14px;"><strong>Business Unit:</strong> {company_business_unit}</p>' if company_business_unit and company_business_unit != 'N/A' else '<p style="color: var(--gray-700); margin-bottom: 16px; font-size: 14px;"><strong>Business Unit:</strong> <span style="font-style: italic; color: var(--gray-500);">Not specified in Job Description</span></p>'}
     <div class="company-info-grid" style="margin-bottom: 16px;">
       <div class="info-row">
         <span class="info-label">CEO</span>
