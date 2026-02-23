@@ -45,6 +45,9 @@ class ParsedJD(BaseModel):
         default="full-time",
         description="Employment type: full-time, part-time, contract, internship",
     )
+    jd_text_snippet: Optional[str] = Field(
+        default=None, description="A ~3000 character cleaned raw text snippet inherently passed downstream to provide perfect LLM context without re-parsing HTML"
+    )
 
 
 MOCK_PARSED_JD = ParsedJD(
@@ -58,6 +61,7 @@ MOCK_PARSED_JD = ParsedJD(
     years_experience_max=None,
     salary_mentioned="$180,000 - $250,000 per year",
     remote_policy="hybrid",
+    jd_text_snippet="We are looking for an experienced Senior Software Engineer to join Google Cloud Platform...",
     key_responsibilities=[
         "Design, develop, and maintain scalable software systems",
         "Lead technical discussions and code reviews",
@@ -94,6 +98,10 @@ def parse_job_description(html: str, use_mock: bool = False, provider: str = "ge
         json_ld_scripts = soup.find_all('script', type='application/ld+json')
         json_ld_text = "\n".join([s.get_text() for s in json_ld_scripts if s.get_text()])
         
+        # Explicitly extract Next.js SPA data dictionaries 
+        next_data_script = soup.find('script', id='__NEXT_DATA__')
+        next_data_text = next_data_script.get_text() if next_data_script and next_data_script.get_text() else ""
+        
         # Remove script and style elements for clean text extraction
         for script in soup(["script", "style", "noscript"]):
             script.decompose()
@@ -125,14 +133,16 @@ def parse_job_description(html: str, use_mock: bool = False, provider: str = "ge
         if json_ld_text:
             clean_text = f"{clean_text}\n\n--- STRUCTURED JOB DATA ---\n{json_ld_text}"
             
+        if next_data_text:
+            clean_text = f"{clean_text}\n\n--- NEXT.JS APP STATE ---\n{next_data_text}"
+            
         # If the extracted visual text is very short (e.g. Oracle Cloud JS page), 
         # append ALL script contents so the LLM can parse the ugly JSON state data.
         if len(clean_text) < 500:
-            script_text = "\n".join([s.get_text() for s in scripts if s.get_text() and s not in json_ld_scripts])
+            script_text = "\n".join([s.get_text() for s in scripts if s.get_text() and s not in json_ld_scripts and s != next_data_script])
             clean_text += "\n\n--- JSON/JAVASCRIPT APP STATE ---\n\n" + script_text
             
-        # Truncate to a reasonable length (e.g., 30k chars is plenty for Gemini's context)
-        # but huge savings compared to raw HTML with scripts
+        # Truncate to a reasonable length 
         clean_text = clean_text[:30000]
         
         # Escape triple quotes to prevent breaking the f-string
@@ -153,6 +163,11 @@ Job Posting Text:
 {clean_text}"""
 
         parsed_data = llm_generate_json(prompt, provider=provider, max_tokens=2000, temperature=0.0)
+        
+        # Inject the raw text snippet back into the payload so downstream agents can read the actual JD!
+        # We limit it to ~3000 characters to keep tokens low while providing massive context
+        parsed_data["jd_text_snippet"] = clean_text[:3000]
+        
         result = ParsedJD(**parsed_data)
         logger.info(f"Parsed JD: {result.job_title} at {result.company}")
         return result
