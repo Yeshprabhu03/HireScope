@@ -9,9 +9,9 @@ HireScope is an AI-powered job analysis platform that transforms any job posting
 
 ## ✨ Features
 
-- **🌐 Robust Job Page Scraping** — Fetches and parses job postings from any URL, including complex SPAs like Workday and Eightfold natively using `application/ld+json` schemas.
+- **🌐 Robust Job Page Scraping** — Fetches and parses job postings from any URL natively into structured JSON. Includes dynamic extraction strategies for Workday/Eightfold (`application/ld+json`) and Next.js SPAs like Goldman Sachs (`__NEXT_DATA__`) to bypass bot protection boundaries.
 - **📋 JD Parsing** — AI-powered extraction of job title, company, skills, responsibilities, salary, and seniority.
-- **🏢 Company Intelligence** — Real-time Market Cap integration via Yahoo Finance (`yfinance`) + Wikipedia data + AI-enriched insights (CEO, culture).
+- **🏢 Company Intelligence** — Real-time Market Cap integration via Yahoo Finance (`yfinance`) + Wikipedia data + AI-enriched insights (CEO, active Business Unit, Culture, and targeted LinkedIn Networking Strategies).
 - **💰 Salary Intelligence** — Triangulated salary estimates from DOL H1B data, JD mentions, and AI market analysis.
 - **🎯 High-Fidelity Mastery Roadmap** — Role-aware, dynamic RAG-powered interview intelligence featuring hierarchical technical/non-technical mastery categories, company-specific cultural values, and targeted gap analysis. Includes multi-platform data vetting (Reddit, WallStreetOasis, Exponent).
 - **📊 Professional HTML Report** — Full-width, clean UI report with explicit source attribution and confidence indicators for generated intelligence.
@@ -23,7 +23,7 @@ HireScope recently evolved from a stateless script into an intelligent, stateful
 
 - **Phase 1 (Data Caching)** — Eliminates redundant external API calls by caching parsed job descriptions and Wikipedia snapshots.
 - **Phase 2 (Salary Intelligence)** — Automatically extracts explicit JD salary strings to build a proprietary baseline database, prioritizing "Learned Data" over DOL H1B data when 5+ observations are gathered for a role.
-- **Phase 3 (Dynamic RAG Indexing)** — Intercepts sparse RAG searches. If there are `< 3` interview experiences for a company, the system live-scrapes the web, caches the data in SQLite, and injects the new vectors directly into the live ChromaDB memory mid-flight before re-querying.
+- **Phase 3 (Dynamic RAG Indexing)** — Intercepts sparse RAG searches. If there are `< 3` interview experiences for a company, the system live-scrapes the web, caches the data in SQLite, and injects the new vectors directly into the ChromaDB memory mid-flight. *Includes a strict real-time Vector Metadata Validation Algorithm that enforces deep word-overlap checks to guarantee role isolation and totally eliminate RAG cross-contamination.*
 - **Phase 4 (User Feedback Loop)** — Provides explicit Thumbs-Up / Thumbs-Down buttons on generated Study Guides, logging user feedback ratings directly into SQLite for future fine-tuning to prune hallucinated vectors.
 
 ## 🏗️ Architecture
@@ -114,9 +114,10 @@ Navigate to **http://localhost:5173** and paste a job URL to analyze!
 | Greenhouse | HTTP | ✅ Full support |
 | Lever | HTTP | ✅ Full support |
 | Indeed | HTTP | ✅ Full support |
-| Eightfold | Playwright | ✅ Full support |
-| Workday | Playwright | ✅ Full support |
-| LinkedIn | Playwright | ⚠️ May require login |
+| Eightfold | AI-Native JSON Extraction | ✅ Full support |
+| Workday | AI-Native JSON Extraction | ✅ Full support |
+| Next.js SPA | AI-Native JSON Extraction | ✅ Full support (e.g., Goldman Sachs) |
+| LinkedIn | Public Bypasses | ✅ Full support (Public Listings) |
 | SmartRecruiters | Playwright | ✅ Full support |
 | Generic URLs | HTTP + fallback | ✅ Best effort |
 
