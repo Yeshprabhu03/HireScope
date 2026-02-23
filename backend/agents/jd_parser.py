@@ -97,16 +97,27 @@ def parse_job_description(html: str, use_mock: bool = False, provider: str = "ge
             script.decompose()
             
             
-        # Extract meta tags explicitly since get_text() ignores attributes
-        meta_tags = soup.find_all('meta')
-        meta_text = "\n".join([m.get("content", "") for m in meta_tags if m.get("content")])
+        # Extract meta tags explicitly and label them so the LLM knows their significance
+        extracted_meta = []
+        if soup.title and soup.title.string:
+            extracted_meta.append(f"Page Title: {soup.title.string}")
+            
+        og_title = soup.find("meta", property="og:title")
+        if og_title and og_title.get("content"):
+            extracted_meta.append(f"Job Title Metadata (og:title): {og_title.get('content')}")
+            
+        og_desc = soup.find("meta", property="og:description")
+        if og_desc and og_desc.get("content"):
+            extracted_meta.append(f"Job Description Metadata (og:description): {og_desc.get('content')}")
+            
+        meta_text = "\n".join(extracted_meta)
             
         # Get text content with minimal markdown-like structure
         clean_text = soup.get_text(separator="\n", strip=True)
         
         # Prepend the meta tag content to give clear hints about Title and Description
         if meta_text:
-            clean_text = f"--- META DATA ---\n{meta_text}\n--- PAGE CONTENT ---\n{clean_text}"
+            clean_text = f"--- CRITICAL METADATA ---\n{meta_text}\n--- PAGE CONTENT ---\n{clean_text}"
             
         # Always append Structured Schema JSON if it exists!
         if json_ld_text:

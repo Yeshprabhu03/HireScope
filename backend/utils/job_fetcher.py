@@ -19,6 +19,7 @@ JS_RENDERED_DOMAINS = [
     "lever.co",
     "smartrecruiters.com",
     "icims.com",
+    "oraclecloud.com",
 ]
 
 # Domains that block all automated access — fail fast with a helpful message.
@@ -211,12 +212,31 @@ def fetch_job_html(url: str) -> str:
 def extract_text_from_html(html: str) -> str:
     """Extract clean text content from HTML, removing scripts and styles."""
     soup = BeautifulSoup(html, "lxml")
+    
+    # Extract meta tags (crucial for SPAs like Oracle Cloud / Workday where DOM is empty)
+    meta_context = []
+    og_title = soup.find("meta", property="og:title")
+    if og_title and og_title.get("content"):
+        meta_context.append(f"Job Title Metadata: {og_title.get('content')}")
+    elif soup.title and soup.title.string:
+        meta_context.append(f"Page Title: {soup.title.string}")
+        
+    og_desc = soup.find("meta", property="og:description")
+    if og_desc and og_desc.get("content"):
+        meta_context.append(f"Job Description Metadata: {og_desc.get('content')}")
+
     for tag in soup(["script", "style", "nav", "footer", "header"]):
         tag.decompose()
+        
     text = soup.get_text(separator="\n", strip=True)
     # Remove excessive blank lines
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    return "\n".join(lines)
+    
+    final_text = "\n".join(lines)
+    if meta_context:
+        final_text = "\n".join(meta_context) + "\n\n--- Page Content ---\n\n" + final_text
+        
+    return final_text
 
 
 def get_job_content(url: str, use_mock: bool = False) -> tuple[str, str]:
