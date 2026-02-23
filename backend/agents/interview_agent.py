@@ -110,6 +110,8 @@ def analyze_interviews(
     Extract actual questions from RAG, mapped to JD requirements.
     Differentiates between verified reported data and reasoned estimations.
     """
+    role = job_title
+    
     if use_mock:
         logger.info(f"Using mock interview intel for '{job_title}' at '{company}'")
         return MOCK_INTERVIEW_INTEL
@@ -284,7 +286,7 @@ CRITICAL:
 1. For any question or round explicitly mentioned in the experiences below, prefix it with "Reported: ".
 2. For inferred questions based on JD/patterns, prefix with "Likely Topic: ".
 3. STRICT POLICY: DO NOT add generic career advice, fluff, or phrases like "Master the art of...", "Showcase your commitment...", or "Deep dive into...".
-4. Extract EXACT questions and topics verbatim from the experiences where possible. DO NOT invent scenarios not mentioned.
+4. Extract EXACT questions and topics verbatim from the experiences where possible. IF NO experiences exist or match, you MUST heavily rely on the Job Description Context to logically INFER highly probable, role-specific questions. DO NOT return empty lists for technical or behavioral questions.
 
 Technical Experiences:
 {tech_context}
