@@ -105,9 +105,11 @@ def fetch_company_node(state: JobAnalysisState) -> dict:
         from database import get_company_snapshot, save_company_snapshot
         from datetime import datetime, timedelta
 
+        cache_key = f"{company}::{job_title}"
+
         # Check cache first
         if company != "Unknown":
-            cached_company = get_company_snapshot(company)
+            cached_company = get_company_snapshot(cache_key)
             if cached_company and cached_company.get("data"):
                 snapshot_date_str = cached_company.get("snapshot_date")
                 if snapshot_date_str:
@@ -118,11 +120,11 @@ def fetch_company_node(state: JobAnalysisState) -> dict:
 
         use_mock = state.get("use_mock", False)
         provider = state.get("provider", "gemini")
-        intel = fetch_company_intel(company, role=job_title, use_mock=use_mock, provider=provider)
+        intel = fetch_company_intel(company, role=job_title, parsed_jd=jd, use_mock=use_mock, provider=provider)
         
         # Save to cache
         if company != "Unknown" and intel and not intel.get("error"):
-            save_company_snapshot(company, intel)
+            save_company_snapshot(cache_key, intel)
             
         return {"company_intelligence": intel}
     except Exception as e:
