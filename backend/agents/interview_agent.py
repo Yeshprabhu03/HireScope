@@ -176,8 +176,27 @@ def analyze_interviews(
 
         all_unique_data = tech_data + behavioral_data + process_data
         
-        # Count how many actually match the target company
-        verified_docs = [d for d in all_unique_data if company.lower() in d["metadata"].get("company", "").lower()]
+        def is_verified_record(doc: dict) -> bool:
+            meta = doc.get("metadata", {})
+            meta_company = meta.get("company", "").lower()
+            meta_role = meta.get("role", "").lower()
+            
+            if company.lower() not in meta_company:
+                return False
+                
+            # If it's a 'general' role category, we MUST enforce role matching to prevent
+            # cross-contamination (e.g., retrieving 'Customer Success' for 'Compliance Director')
+            if role_category == "general" and meta_role and meta_role != "unknown":
+                target_words = {w for w in role.lower().split() if len(w) > 3}
+                meta_words = {w for w in meta_role.split() if len(w) > 3}
+                # If there are valid words to compare, they must have at least one overlap
+                if target_words and meta_words and not (target_words & meta_words):
+                    return False
+                    
+            return True
+        
+        # Count how many actually match the target company and role constraints
+        verified_docs = [d for d in all_unique_data if is_verified_record(d)]
         verified_count = len(set([d["text"] for d in verified_docs]))
         
         # --- PHASE 3: ON DEMAND SCRAPING FALLBACK ---
@@ -223,7 +242,7 @@ def analyze_interviews(
                     process_data = get_doc_data(process_results)
                     all_unique_data = tech_data + behavioral_data + process_data
                     
-                    verified_docs = [d for d in all_unique_data if company.lower() in d["metadata"].get("company", "").lower()]
+                    verified_docs = [d for d in all_unique_data if is_verified_record(d)]
                     verified_count = len(set([d["text"] for d in verified_docs]))
                     
                 except Exception as e:
