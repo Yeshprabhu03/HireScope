@@ -148,6 +148,7 @@ def fetch_salary_node(state: JobAnalysisState) -> dict:
             seniority_level=jd.get("seniority_level", "mid"),
             required_skills=jd.get("required_skills", []),
             salary_mentioned=jd.get("salary_mentioned"),
+            jd_text_snippet=jd.get("jd_text_snippet"),
             use_mock=use_mock,
             provider=provider,
         )
@@ -176,6 +177,7 @@ def fetch_interviews_node(state: JobAnalysisState) -> dict:
             industry=industry, 
             parsed_jd=jd,
             company_intel=company_intel,
+            jd_text_snippet=jd.get("jd_text_snippet"),
             use_mock=use_mock, 
             provider=provider
         )

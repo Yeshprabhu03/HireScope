@@ -96,20 +96,22 @@ def categorize_role(job_title: str) -> str:
         return "general"
 
 def analyze_interviews(
+    job_title: str,
     company: str,
-    role: str,
-    industry: str = "",
+    industry: str = "Technology",
     parsed_jd: dict = None,
     company_intel: dict = None,
+    jd_text_snippet: Optional[str] = None,
     use_mock: bool = False,
     provider: str = "gemini",
 ) -> dict:
     """
-    Use RAG to retrieve interview experiences and Gemini to synthesize insights.
+    Generate an exhaustive study guide and interview intelligence.
+    Extract actual questions from RAG, mapped to JD requirements.
     Differentiates between verified reported data and reasoned estimations.
     """
     if use_mock:
-        logger.info(f"Using mock interview intel for '{role}' at '{company}'")
+        logger.info(f"Using mock interview intel for '{job_title}' at '{company}'")
         return MOCK_INTERVIEW_INTEL
 
     try:
@@ -252,7 +254,11 @@ def analyze_interviews(
         has_verified_data = verified_count > 0
         confidence_score = 0.9 if verified_count > 2 else 0.7 if verified_count > 0 else 0.4
 
-        jd_context = json.dumps(parsed_jd, indent=2) if parsed_jd else "No specific JD provided."
+        jd_summary = json.dumps({k: v for k, v in parsed_jd.items() if k != 'jd_text_snippet'}, indent=2) if parsed_jd else "No specific JD provided."
+        jd_snippet = parsed_jd.get('jd_text_snippet', '') if parsed_jd else ""
+        
+        jd_context = f"{jd_summary}\n\nRAW JOB DESCRIPTION SNIPPET:\n{jd_snippet}" if jd_snippet else jd_summary
+        
         company_context = json.dumps(company_intel, indent=2) if company_intel else "No specific company context provided."
 
         prompt = f"""You are an expert Executive Interview Coach and Principal Tech Lead. 
@@ -291,7 +297,7 @@ Process Experiences:
 
 Return ONLY valid JSON with this structure:
 {{
-  "rounds": ["<list of interview rounds in order>"],
+  "rounds": ["<EXTRACT the chronological sequence of interview rounds (e.g. 'Initial Recruiter Screen', 'Technical Phone Interview', 'Onsite Loop/Superday'). Use the exact specific names mentioned in the text if available.>"],
   "technical_questions": ["<5-7 questions/topics, prefixed with 'Reported:' or 'Likely Topic:'>"],
   "behavioral_questions": ["<4-5 questions/topics, prefixed with 'Reported:' or 'Likely Topic:'>"],
   "difficulty": "<easy|medium|hard>",
@@ -312,9 +318,9 @@ Return ONLY valid JSON with this structure:
       ]
     }}
   ],
-  "process_overview": "<2-3 sentence overview of the interview process>",
+  "process_overview": "<2-3 sentence overview. MUST explicitly mention company-specific details (e.g., 'HireVue', 'Superday') found in experiences. DO NOT write generic filler.>",
   "identified_sources": ["<list of platforms identified from data>"],
-  "source": "{f"Source: {verified_count} verified {' / '.join(list(set(sources_found)))} interview experiences" if has_verified_data else 'Trusted Synthesis (JD Context & Industry Patterns)'}"
+  "source": "{f"Source: {verified_count} verified {'/'.join(list(set(sources_found))) if sources_found else 'experiences'}." if has_verified_data else 'Trusted Synthesis (JD Context & Industry Patterns)'}"
 }}"""
 
         result = llm_generate_json(prompt, provider=provider, max_tokens=6000, temperature=0.1)

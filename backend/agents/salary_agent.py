@@ -54,6 +54,7 @@ def estimate_market_salary_with_claude(
     location: str,
     seniority: str,
     skills: list[str],
+    jd_text_snippet: Optional[str] = None,
     use_mock: bool = False,
     provider: str = "gemini",
 ) -> dict:
@@ -69,13 +70,15 @@ def estimate_market_salary_with_claude(
     try:
         from utils.llm import llm_generate_json
 
+        context_block = f"\n\nContext - Raw Job Description Snippet:\n{jd_text_snippet}" if jd_text_snippet else ""
+        
         prompt = f"""You are a compensation expert. Estimate the salary range for this position.
 
 Job Title: {job_title}
 Company: {company}
 Location: {location}
 Seniority: {seniority}
-Key Skills: {", ".join(skills[:10])}
+Key Skills: {", ".join(skills[:10])}{context_block}
 
 Return ONLY valid JSON with this structure:
 {{
@@ -101,6 +104,7 @@ def analyze_salary(
     seniority_level: str,
     required_skills: list[str],
     salary_mentioned: Optional[str],
+    jd_text_snippet: Optional[str] = None,
     use_mock: bool = False,
     provider: str = "gemini",
 ) -> dict:
@@ -163,7 +167,7 @@ def analyze_salary(
 
     # Source 3: Claude market estimate
     market = estimate_market_salary_with_claude(
-        job_title, company, location, seniority_level, required_skills, use_mock=use_mock, provider=provider
+        job_title, company, location, seniority_level, required_skills, jd_text_snippet=jd_text_snippet, use_mock=use_mock, provider=provider
     )
     salary_estimates.append(
         {"source": "Market Estimate", "min": market["min"], "max": market["max"],
