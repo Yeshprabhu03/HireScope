@@ -51,7 +51,7 @@ def resolve_company_name(company_input: str) -> str:
     }
     return aliases.get(company_input.upper().strip(), company_input.strip())
 
-def fetch_wikipedia_summary(company: str) -> Optional[dict]:
+def fetch_wikipedia_summary(company: str, is_retry: bool = False) -> Optional[dict]:
     """Fetch company summary from Wikipedia API."""
     # Resolve any known abbreviation first
     resolved_company = resolve_company_name(company)
@@ -89,8 +89,26 @@ def fetch_wikipedia_summary(company: str) -> Optional[dict]:
 
             if response.status_code == 200:
                 data = response.json()
+                
+                # Check for disambiguation page
+                if data.get("type") == "disambiguation" and not is_retry:
+                    logger.info(f"Hit disambiguation page for '{search_name}', retrying with ' (company)' suffix")
+                    return fetch_wikipedia_summary(f"{search_name} (company)", is_retry=True)
+                
+                # Smart truncation: keep full sentences within ~600 chars limit
+                raw_extract = data.get("extract", "")
+                if len(raw_extract) > 600:
+                    # Find the last period before 600 chars
+                    last_period = raw_extract[:600].rfind(".")
+                    if last_period > 0:
+                        description = raw_extract[:last_period + 1]
+                    else:
+                        description = raw_extract[:597] + "..."
+                else:
+                    description = raw_extract
+                
                 return {
-                    "description": data.get("extract", "")[:500],
+                    "description": description,
                     "wikipedia_url": data.get("content_urls", {}).get("desktop", {}).get("page", ""),
                 }
         except Exception as e:
