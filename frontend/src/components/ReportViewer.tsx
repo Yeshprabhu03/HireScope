@@ -47,6 +47,18 @@ export default function ReportViewer({ jobId, onBack }: Props) {
     fetchReport()
   }, [jobId])
 
+  useEffect(() => {
+    if (report && report.parsed_jd) {
+      const jd = report.parsed_jd as any;
+      const originalTitle = document.title;
+      const newTitle = `${jd.company || 'Company'} - ${jd.job_title || 'Position'}`;
+      document.title = newTitle;
+      return () => {
+        document.title = originalTitle;
+      };
+    }
+  }, [report]);
+
   const editor = useEditor({
     extensions: [StarterKit],
     content: report?.html_report || '',
