@@ -11,8 +11,9 @@ HireScope is an AI-powered job analysis platform that transforms any job posting
 
 - **🌐 Robust Job Page Scraping** — Fetches and parses job postings from any URL natively into structured JSON. Includes dynamic extraction strategies with **Radical DOM Pruning** for Workday, Eightfold, and Next.js SPAs (Goldman Sachs, Oracle Cloud) to bypass bot protection boundaries.
 - **📋 JD Parsing & Team Intelligence** — AI-powered extraction of job details, including a specialized **Sub-Team Deep Dive** that identifies specific internal groups (e.g., "Ayco") for hyper-specific research.
-- **🏢 Company Intelligence** — Real-time Market Cap integration via Yahoo Finance (`yfinance`) + robust Wikipedia research with **Relevance-Aware Redirect Handling** and multi-result search pass.
+- **🏢 Company Intelligence** — Real-time Market Cap integration via Yahoo Finance (`yfinance`) + robust Wikipedia research with **Iterative Suffix Stripping** for complex legal names and **Relevance-Aware Redirect Handling** to prevent subsidiary data loss.
 - **💰 Salary Intelligence** — Triangulated salary estimates from DOL H1B data, JD mentions, and AI market analysis.
+- **🎭 Intelligent URL Routing** — Automatically detects and routes problematic job boards (LinkedIn, ICE, Microsoft) through a robust **Playwright-driven browser fetcher** with a custom User-Agent to bypass bot detection.
 - **🎯 High-Fidelity Mastery Roadmap** — Role-aware, dynamic RAG-powered interview intelligence featuring hierarchical technical/non-technical mastery categories. Includes multi-platform data vetting (Reddit, WallStreetOasis, Exponent).
 - **📊 Professional HTML Report** — Full-width, clean UI report with Mermaid-driven corporate structure visualization and confidence indicators.
 - **⏱️ Real-Time Progress** — Live progress bar powered by LangGraph streaming, showing each analysis node as it completes.
