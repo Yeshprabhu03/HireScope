@@ -23,6 +23,7 @@ JS_RENDERED_DOMAINS = [
     "oraclecloud.com",
     "google.com/about/careers",
     "careers.microsoft.com",
+    "ice.com",
 ]
 
 # Domains that block all automated access — fail fast with a helpful message.

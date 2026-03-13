@@ -92,7 +92,10 @@ def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, is_ret
                 for result in results[:5]: # Try top 5 results for relevance
                     best_title = result["title"]
                     # Validate title: must contain company name or sub_team name to be considered
-                    if sub_team.lower() in best_title.lower() or company.lower() in best_title.lower():
+                    # OR be the #1 result if the search was for the company + sub_team
+                    if (sub_team.lower() in best_title.lower() or 
+                        company.lower() in best_title.lower() or
+                        (result == results[0] and len(best_title) > 0)):
                         if best_title.lower() != resolved_company.lower() and best_title not in search_names:
                             logger.info(f"Found specific Wikipedia title from search: '{best_title}'")
                             search_names.insert(0, best_title)
@@ -184,20 +187,31 @@ def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, su
     }
     
     # 1. Base info via Wikipedia
+    # We now fetch TWO summaries if a sub-team is present to avoid one overwriting the other
+    main_wiki = None
+    sub_wiki = None
+    
     try:
-        # Pass both company and sub_team to let the summary logic pick the best match
-        wiki_data = fetch_wikipedia_summary(company, sub_team=sub_team)
-        
-        if wiki_data:
-            intel["description"] = wiki_data.get("description", "")
-            intel["wikipedia_url"] = wiki_data.get("wikipedia_url", "")
+        # Fetch individual summaries
+        main_wiki = fetch_wikipedia_summary(company)
+        if sub_team and sub_team != "N/A":
+            sub_wiki = fetch_wikipedia_summary(company, sub_team=sub_team)
+            
+        if main_wiki:
+            intel["description"] = main_wiki.get("description", "")
+            intel["wikipedia_url"] = main_wiki.get("wikipedia_url", "")
             intel["source"] = "Wikipedia API"
-            logger.info(f"Fetched Wikipedia summary for '{company}' (with sub_team={sub_team})")
-        else:
+            logger.info(f"Fetched parent Wikipedia summary for '{company}'")
+        
+        if sub_wiki:
+            # We don't overwrite the main description, but we log success
+            logger.info(f"Fetched sub-team Wikipedia summary for '{sub_team}'")
+
+        if not main_wiki and not sub_wiki:
             intel["description"] = f"A prominent company in its sector."
-            logger.warning(f"Wikipedia fetch failed for '{company}', using placeholder.")
+            logger.warning(f"Wikipedia fetch failed for both parent and sub-team.")
     except Exception as e:
-        logger.warning(f"Wikipedia fetch failed for '{company}': {e}")
+        logger.warning(f"Wikipedia fetch failed: {e}")
         intel["description"] = f"A prominent company in its sector."
 
     # 2. Extract deep metrics and networking targets with LLM
@@ -218,8 +232,11 @@ Team Business Unit: {bu}
 Job Role: {role}
 {f"Extracted JD Team Context: {team_context}" if team_context else ""}
 
-Research Context (Wikipedia/Search):
-{wiki_data.get('description', '')[:15000] if wiki_data else ""}
+Research Context - Parent Company (Wikipedia):
+{main_wiki.get('description', '')[:8000] if main_wiki else "N/A"}
+
+Research Context - Target Sub-Team (Wikipedia):
+{sub_wiki.get('description', '')[:8000] if sub_wiki else "N/A"}
 
 {bu_context}{jd_context}
 
