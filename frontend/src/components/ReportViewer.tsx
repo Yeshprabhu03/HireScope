@@ -77,12 +77,36 @@ export default function ReportViewer({ jobId, onBack }: Props) {
     }
   }, [editor, editMode])
 
+  const handleDownload = () => {
+    if (!report) return
+    const jd = report.parsed_jd as any
+    const filename = `${jd?.company || 'Company'} - ${jd?.job_title || 'Position'}.html`
+    const blob = new Blob([report.html_report], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   const handlePrint = () => {
     if (iframeRef.current?.contentWindow) {
       const jd = report?.parsed_jd as any;
-      if (jd) {
-        iframeRef.current.contentWindow.document.title = `${jd.company || 'Company'} - ${jd.job_title || 'Position'}`;
+      const title = `${jd?.company || 'Company'} - ${jd?.job_title || 'Position'}`;
+      
+      // Force change the title in both documents
+      document.title = title;
+      iframeRef.current.contentWindow.document.title = title;
+      
+      // Even try to update any existing title tag in the head
+      const titleTag = iframeRef.current.contentWindow.document.getElementsByTagName('title')[0];
+      if (titleTag) {
+        titleTag.innerText = title;
       }
+
       iframeRef.current.contentWindow.print()
     }
   }
@@ -147,6 +171,21 @@ export default function ReportViewer({ jobId, onBack }: Props) {
             }}
           >
             {editMode ? '✏️ Editing' : '✏️ Edit'}
+          </button>
+          <button
+            onClick={handleDownload}
+            style={{
+              background: '#2563eb',
+              color: 'white',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: '600',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+            }}
+          >
+            📥 Download HTML
           </button>
           <button
             onClick={handlePrint}
