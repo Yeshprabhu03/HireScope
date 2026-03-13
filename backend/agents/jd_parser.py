@@ -162,8 +162,9 @@ Rules:
 - If uncertain about company/title, look at Page Title first.
 - If it's a specific job, set page_type='job_posting'.
 - If it's a search results page/list, set page_type='career_page'.
-- LOOK CLOSELY for internal team names or sub-brands (e.g. 'Ayco' at Goldman, 'Azure Storage' at MS, 'Waymo' at Alphabet) and set `sub_team`.
+- LOOK CLOSELY for internal team names, sub-brands, or specific subsidiaries (e.g. 'NYSE' at Intercontinental Exchange, 'Ayco' at Goldman, 'Waymo' at Alphabet, 'AWS' at Amazon) and set `sub_team`.
 - If a `sub_team` is found, ALSO extract a 1-2 sentence `extracted_team_context` describing what that specific team does based on the JD text.
+- For `company`, prioritize the common brand name (e.g., 'Intercontinental Exchange' or 'ICE') rather than the full legal entity like 'Intercontinental Exchange Holdings, Inc.' if both are present.
 
 Input:
 {clean_text}"""

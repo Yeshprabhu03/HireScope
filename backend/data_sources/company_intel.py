@@ -70,12 +70,18 @@ def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, is_ret
     # Original name and variations
     search_names.append(resolved_company)
     
-    # Progressively strip suffixes
-    suffixes_to_strip = [" Inc.", " LLC", " Corp.", " Corporation", " Holdings", " Group", " Ltd.", " Limited", ", Inc.", ", LLC"]
+    # Progressively strip suffixes iteratively
+    suffixes_to_strip = [" Inc.", " LLC", " Corp.", " Corporation", " Holdings", " Group", " Ltd.", " Limited", ", Inc.", ", LLC", ", Holdings"]
     name = resolved_company
-    for suffix in suffixes_to_strip:
-        if name.endswith(suffix):
-            name = name[:-len(suffix)].strip()
+    changed = True
+    while changed:
+        changed = False
+        for suffix in suffixes_to_strip:
+            if name.endswith(suffix):
+                name = name[:-len(suffix)].strip()
+                if name.endswith(","): # Strip trailing comma after stripping suffix
+                    name = name[:-1].strip()
+                changed = True
     if name != resolved_company and name not in search_names:
         search_names.append(name)
 
@@ -101,7 +107,22 @@ def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, is_ret
                             search_names.insert(0, best_title)
                             break # Found a good one
         except Exception as e:
-            logger.warning(f"Wikipedia search failed: {e}")
+            logger.warning(f"Wikipedia sub-team search failed: {e}")
+
+    # 1b. Company Search Fallback: If direct lookups fail, try searching for the company name
+    if not is_retry:
+        try:
+            search_api_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={requests.utils.quote(resolved_company)}&format=json"
+            search_res = requests.get(search_api_url, headers={"User-Agent": "HireScope/1.0"}, timeout=10)
+            if search_res.status_code == 200:
+                results = search_res.json().get("query", {}).get("search", [])
+                if results:
+                    top_result = results[0]["title"]
+                    if top_result not in search_names:
+                        logger.info(f"Adding Wikipedia company search result: '{top_result}'")
+                        search_names.append(top_result)
+        except Exception as e:
+            logger.warning(f"Wikipedia company search failed: {e}")
 
     for search_name in search_names:
         try:

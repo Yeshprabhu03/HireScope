@@ -36,7 +36,12 @@ async def fetch_rendered_text(url: str):
                         const noise = document.querySelectorAll('script, style, noscript, iframe, nav, footer, header, .gc-sidebar, .gc-search-results, [aria-label="Filter"], .ms-search-list');
                         noise.forEach(e => e.remove());
                         
-                        const markers = ['Minimum qualifications', 'About the job', 'Responsibilities', 'Required Qualifications', 'Job description', 'Qualifications', 'YOUR IMPACT', 'OUR IMPACT', 'ABOUT GOLDMAN SACHS'];
+                        const markers = [
+                        'Minimum qualifications', 'About the job', 'Responsibilities', 
+                        'Required Qualifications', 'Job description', 'Qualifications', 
+                        'YOUR IMPACT', 'OUR IMPACT', 'ABOUT GOLDMAN SACHS',
+                        'NYSE', 'ICE Data Services', 'Intercontinental Exchange'
+                    ];
                         let mainContainer = document.querySelector('main, [role="main"], [aria-label="Job details"], #job-details, .job-description, [data-testid="job-details"]');
                         
                         if (!mainContainer) {

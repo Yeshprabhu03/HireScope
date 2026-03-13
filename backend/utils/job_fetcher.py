@@ -281,7 +281,8 @@ def get_job_content(url: str, use_mock: bool = False) -> tuple[str, str]:
             )
             if result.returncode == 0 and len(result.stdout.strip()) > 500:
                 logger.info(f"Successfully fetched {url} with Playwright Subprocess ({len(result.stdout)} chars)")
-                return result.stdout, result.stdout
+                rendered_html = result.stdout
+                return rendered_html, extract_text_from_html(rendered_html)
             else:
                 logger.error(f"Playwright Subprocess failed or returned short text for {url}. stderr: {result.stderr}")
         except subprocess.TimeoutExpired:
