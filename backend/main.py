@@ -137,9 +137,6 @@ async def get_job_status(job_id: str):
     }
 
 
-from fastapi.responses import StreamingResponse
-from utils.pdf_gen import generate_pdf_from_html
-
 @app.get("/api/jobs/{job_id}/report")
 async def get_job_report(job_id: str):
     """Get the full HTML report for a completed job."""
@@ -159,37 +156,6 @@ async def get_job_report(job_id: str):
         "salary_intelligence": job.get("salary_intelligence"),
         "interview_intelligence": job.get("interview_intelligence"),
     }
-
-
-@app.get("/api/jobs/{job_id}/pdf")
-async def download_job_pdf(job_id: str):
-    """Generate and download a PDF report."""
-    if job_id not in jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
-    
-    job = jobs[job_id]
-    if job.get("status") != "completed":
-        raise HTTPException(status_code=400, detail="Job not completed")
-    
-    html_content = job.get("html_report")
-    if not html_content:
-        raise HTTPException(status_code=404, detail="Report content missing")
-    
-    try:
-        pdf_bytes = await generate_pdf_from_html(html_content)
-        
-        jd = job.get("parsed_jd") or {}
-        filename = f"{jd.get('company', 'Company')} - {jd.get('job_title', 'Position')}.pdf"
-        
-        from io import BytesIO
-        return StreamingResponse(
-            BytesIO(pdf_bytes),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
-        )
-    except Exception as e:
-        logger.error(f"PDF generation failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
 
 
 @app.post("/api/jobs/{job_id}/feedback")

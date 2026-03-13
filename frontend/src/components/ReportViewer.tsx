@@ -150,13 +150,16 @@ export default function ReportViewer({ jobId, onBack }: Props) {
           >
             📄 HTML
           </button>
-          <a
-            href={`/api/jobs/${jobId}/pdf`}
-            download
+          
+          <button
+            onClick={() => {
+              alert("Tip: In the next window, set the 'Destination' to 'Save as PDF' to download this report.");
+              handlePrint();
+            }}
             style={{
               background: '#2563eb',
               color: 'white',
-              textDecoration: 'none',
+              border: 'none',
               padding: '8px 16px',
               borderRadius: '6px',
               fontSize: '13px',
@@ -165,23 +168,10 @@ export default function ReportViewer({ jobId, onBack }: Props) {
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
+              cursor: 'pointer'
             }}
           >
-            📥 Download PDF
-          </a>
-          <button
-            onClick={handlePrint}
-            style={{
-              background: 'white',
-              color: '#374151',
-              border: '1px solid #e2e8f0',
-              padding: '8px 16px',
-              borderRadius: '6px',
-              fontSize: '13px',
-              fontWeight: '500',
-            }}
-          >
-            🖨️ Browser Print
+            💾 Export as PDF
           </button>
         </div>
       </div>
