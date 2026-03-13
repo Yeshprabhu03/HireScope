@@ -79,6 +79,10 @@ export default function ReportViewer({ jobId, onBack }: Props) {
 
   const handlePrint = () => {
     if (iframeRef.current?.contentWindow) {
+      const jd = report?.parsed_jd as any;
+      if (jd) {
+        iframeRef.current.contentWindow.document.title = `${jd.company || 'Company'} - ${jd.job_title || 'Position'}`;
+      }
       iframeRef.current.contentWindow.print()
     }
   }
@@ -200,7 +204,7 @@ export default function ReportViewer({ jobId, onBack }: Props) {
               height: '800px',
               border: 'none',
             }}
-            title="HireScope Report"
+            title={`${(report.parsed_jd as any)?.company || 'Company'} - ${(report.parsed_jd as any)?.job_title || 'Position'}`}
           />
         </div>
       )}
