@@ -1,7 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { useEditor, EditorContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-
 
 interface ReportData {
   job_id: string
@@ -21,7 +18,6 @@ export default function ReportViewer({ jobId, onBack }: Props) {
   const [report, setReport] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [editMode, setEditMode] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
@@ -58,24 +54,6 @@ export default function ReportViewer({ jobId, onBack }: Props) {
       };
     }
   }, [report]);
-
-  const editor = useEditor({
-    extensions: [StarterKit],
-    content: report?.html_report || '',
-    editable: editMode,
-  })
-
-  useEffect(() => {
-    if (editor && report?.html_report) {
-      editor.commands.setContent(report.html_report)
-    }
-  }, [editor, report])
-
-  useEffect(() => {
-    if (editor) {
-      editor.setEditable(editMode)
-    }
-  }, [editor, editMode])
 
   const handleDownload = () => {
     if (!report) return
@@ -159,10 +137,10 @@ export default function ReportViewer({ jobId, onBack }: Props) {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
-            onClick={() => setEditMode(e => !e)}
+            onClick={handleDownload}
             style={{
-              background: editMode ? '#f59e0b' : 'white',
-              color: editMode ? 'white' : '#374151',
+              background: '#f8fafc',
+              color: '#334155',
               border: '1px solid #e2e8f0',
               padding: '8px 16px',
               borderRadius: '6px',
@@ -170,23 +148,27 @@ export default function ReportViewer({ jobId, onBack }: Props) {
               fontWeight: '500',
             }}
           >
-            {editMode ? '✏️ Editing' : '✏️ Edit'}
+            📄 HTML
           </button>
-          <button
-            onClick={handleDownload}
+          <a
+            href={`/api/jobs/${jobId}/pdf`}
+            download
             style={{
               background: '#2563eb',
               color: 'white',
-              border: 'none',
+              textDecoration: 'none',
               padding: '8px 16px',
               borderRadius: '6px',
               fontSize: '13px',
               fontWeight: '600',
               boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
             }}
           >
-            📥 Download HTML
-          </button>
+            📥 Download PDF
+          </a>
           <button
             onClick={handlePrint}
             style={{
@@ -199,54 +181,30 @@ export default function ReportViewer({ jobId, onBack }: Props) {
               fontWeight: '500',
             }}
           >
-            🖨️ Print / PDF
+            🖨️ Browser Print
           </button>
         </div>
       </div>
 
-
-
       {/* Report display */}
-      {editMode ? (
-        <div style={{
-          background: 'white',
-          borderRadius: '12px',
-          border: '2px solid #f59e0b',
-          padding: '24px',
-          minHeight: '600px',
-        }}>
-          <div style={{
-            background: '#fffbeb',
-            padding: '8px 12px',
-            borderRadius: '6px',
-            marginBottom: '16px',
-            fontSize: '13px',
-            color: '#92400e',
-          }}>
-            ✏️ Edit mode — changes are local only
-          </div>
-          <EditorContent editor={editor} />
-        </div>
-      ) : (
-        <div style={{
-          background: 'white',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          overflow: 'hidden',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-        }}>
-          <iframe
-            ref={iframeRef}
-            srcDoc={report.html_report}
-            style={{
-              width: '100%',
-              height: '800px',
-              border: 'none',
-            }}
-            title={`${(report.parsed_jd as any)?.company || 'Company'} - ${(report.parsed_jd as any)?.job_title || 'Position'}`}
-          />
-        </div>
-      )}
+      <div style={{
+        background: 'white',
+        borderRadius: '12px',
+        border: '1px solid #e2e8f0',
+        overflow: 'hidden',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+      }}>
+        <iframe
+          ref={iframeRef}
+          srcDoc={report.html_report}
+          style={{
+            width: '100%',
+            height: '800px',
+            border: 'none',
+          }}
+          title={`${(report.parsed_jd as any)?.company || 'Company'} - ${(report.parsed_jd as any)?.job_title || 'Position'}`}
+        />
+      </div>
     </div>
   )
 }
