@@ -168,6 +168,9 @@ def generate_html_report(
     study_guide_sections = interview_intel.get("study_guide", [])
 
     generated_at = datetime.now().strftime("%B %d, %Y at %I:%M %p")
+    company_ticker = company_intel.get("ticker", "N/A")
+    edgar_link = f"https://www.sec.gov/cgi-bin/browse-edgar?CIK={company_ticker}&type=10-K&action=getcompany" if company_ticker and company_ticker.upper() != "N/A" else None
+    edgar_btn = f'<a href="{edgar_link}" target="_blank" style="text-decoration: none; display: flex; align-items: center; gap: 6px; background: #f8fafc; border: 1px solid #e5e7eb; padding: 5px 12px; border-radius: 6px; font-size: 12px; color: #374151; font-weight: 600; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05);" onmouseover="this.style.background=\'#f1f5f9\'; this.style.borderColor=\'#cbd5e1\'" onmouseout="this.style.background=\'#f8fafc\'; this.style.borderColor=\'#e5e7eb\'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> Latest 10-K (SEC EDGAR)</a>' if edgar_link else ''
 
     skill_badges = "".join(
         f'<span class="badge">{skill}</span>' for skill in required_skills
@@ -419,7 +422,10 @@ def generate_html_report(
     
     {f'''
     <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--gray-200);">
-      <strong style="font-size: 16px; display: block; margin-bottom: 12px; color: var(--primary);">Corporate Structure & Revenue</strong>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <strong style="font-size: 16px; color: var(--primary);">Corporate Structure & Revenue</strong>
+        {edgar_btn}
+      </div>
       <div class="two-col">
         {f"""
         <div>
