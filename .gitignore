@@ -88,3 +88,14 @@ data/*.csv
 # Playwright
 playwright-report/
 test-results/
+
+# Temporary Workspace Files
+test_*.py
+*_test.py
+reproduction_*.py
+current_jd.json
+*_jd.json
+*_output.json
+*.html
+repro_output.txt
+clear_*.py

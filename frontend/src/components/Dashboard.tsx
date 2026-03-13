@@ -145,7 +145,11 @@ export default function Dashboard({ highlightJobId, onViewReport, onAnalyzeNew }
 
   const fetchJobs = useCallback(async () => {
     try {
-      const res = await fetch('/api/jobs')
+      const res = await fetch('/api/jobs', {
+        headers: {
+          'X-Pinggy-No-Screen': 'true'
+        }
+      })
       if (res.ok) {
         const data: Job[] = await res.json()
         setJobs(data.reverse()) // newest first

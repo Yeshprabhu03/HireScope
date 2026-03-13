@@ -51,7 +51,7 @@ def resolve_company_name(company_input: str) -> str:
     }
     return aliases.get(company_input.upper().strip(), company_input.strip())
 
-def fetch_wikipedia_summary(company: str, is_retry: bool = False) -> Optional[dict]:
+def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, is_retry: bool = False) -> Optional[dict]:
     """Fetch company summary from Wikipedia API."""
     # Resolve any known abbreviation first
     resolved_company = resolve_company_name(company)
@@ -60,29 +60,51 @@ def fetch_wikipedia_summary(company: str, is_retry: bool = False) -> Optional[di
     suffixes_to_strip = [" Inc.", " LLC", " Corp.", " Corporation", " Holdings", " Group", " Ltd.", " Limited", ", Inc.", ", LLC"]
     
     search_names = []
-    # Original name
+    # If sub_team is provided, try that first as a specific entity
+    if "(company)" not in company and "(company)" not in (sub_team or ""):
+        if sub_team and sub_team != "N/A":
+            search_names.append(sub_team)
+            search_names.append(f"{sub_team} (company)")
+            search_names.append(f"{resolved_company} {sub_team}")
+    
+    # Original name and variations
     search_names.append(resolved_company)
+    
     # Progressively strip suffixes
+    suffixes_to_strip = [" Inc.", " LLC", " Corp.", " Corporation", " Holdings", " Group", " Ltd.", " Limited", ", Inc.", ", LLC"]
     name = resolved_company
     for suffix in suffixes_to_strip:
         if name.endswith(suffix):
             name = name[:-len(suffix)].strip()
-    if name != resolved_company:
+    if name != resolved_company and name not in search_names:
         search_names.append(name)
-    # Also try stripping all suffixes at once
-    clean = resolved_company
-    for suffix in suffixes_to_strip:
-        clean = clean.replace(suffix, "")
-    clean = clean.strip()
-    if clean not in search_names:
-        search_names.append(clean)
 
     search_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
     
+    # 1. New Search Pass: If sub_team is provided, use the Search API to find the best title
+    if sub_team and sub_team != "N/A" and not is_retry:
+        try:
+            logger.info(f"Searching Wikipedia for specific sub-team: '{sub_team}' at {company}")
+            search_api_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={requests.utils.quote(f'{company} {sub_team}')}&format=json"
+            search_res = requests.get(search_api_url, headers={"User-Agent": "HireScope/1.0"}, timeout=10)
+            if search_res.status_code == 200:
+                results = search_res.json().get("query", {}).get("search", [])
+                for result in results[:5]: # Try top 5 results for relevance
+                    best_title = result["title"]
+                    # Validate title: must contain company name or sub_team name to be considered
+                    if sub_team.lower() in best_title.lower() or company.lower() in best_title.lower():
+                        if best_title.lower() != resolved_company.lower() and best_title not in search_names:
+                            logger.info(f"Found specific Wikipedia title from search: '{best_title}'")
+                            search_names.insert(0, best_title)
+                            break # Found a good one
+        except Exception as e:
+            logger.warning(f"Wikipedia search failed: {e}")
+
     for search_name in search_names:
         try:
+            logger.info(f"Trying Wikipedia lookup for: '{search_name}'")
             response = requests.get(
-                f"{search_url}{requests.utils.quote(search_name)}",
+                f"{search_url}{requests.utils.quote(search_name.replace(' ', '_'))}",
                 headers={"User-Agent": "HireScope/1.0 (educational project)"},
                 timeout=10,
             )
@@ -93,26 +115,28 @@ def fetch_wikipedia_summary(company: str, is_retry: bool = False) -> Optional[di
                 # Check for disambiguation page
                 if data.get("type") == "disambiguation" and not is_retry:
                     logger.info(f"Hit disambiguation page for '{search_name}', retrying with ' (company)' suffix")
-                    return fetch_wikipedia_summary(f"{search_name} (company)", is_retry=True)
+                    res = fetch_wikipedia_summary(f"{search_name} (company)", sub_team=sub_team, is_retry=True)
+                    if res: return res
+                    continue # Try next candidate
                 
                 raw_extract = data.get("extract", "")
                 
-                # Check for mismatched entity types (e.g. Adobe mudbrick instead of Adobe Inc.)
-                corporate_keywords = ["company", "corporation", "inc", "llc", "ltd", "business", "technology", "software", "bank", "financial", "firm", "enterprise", "subsidiary", "brand"]
+                # If we were looking for a specific sub-team, ensure the summary actually mentions it
+                # This prevents redirects to generic parent pages (like Ayco -> Goldman Sachs) from stopping the search early
+                if sub_team and sub_team != "N/A" and sub_team.lower() not in raw_extract.lower():
+                    if search_name.lower() != resolved_company.lower():
+                        logger.info(f"Summary for '{search_name}' (redirected or direct) doesn't mention sub-team '{sub_team}', skipping.")
+                        continue
+
+                # Check for mismatched entity types (if we suspect it's not a company)
+                corporate_keywords = ["company", "corporation", "inc", "llc", "ltd", "business", "technology", "software", "bank", "financial", "firm", "enterprise", "subsidiary", "brand", "investment", "wealth", "asset", "service"]
                 if not is_retry and raw_extract and not any(kw in raw_extract.lower() for kw in corporate_keywords):
                     logger.info(f"Summary for '{search_name}' lacks corporate keywords. Retrying with ' (company)'.")
-                    return fetch_wikipedia_summary(f"{search_name} (company)", is_retry=True)
+                    res = fetch_wikipedia_summary(f"{search_name} (company)", sub_team=sub_team, is_retry=True)
+                    if res: return res
+                    continue # Try next candidate
                 
-                # Smart truncation: keep full sentences within ~600 chars limit
-                if len(raw_extract) > 600:
-                    # Find the last period before 600 chars
-                    last_period = raw_extract[:600].rfind(".")
-                    if last_period > 0:
-                        description = raw_extract[:last_period + 1]
-                    else:
-                        description = raw_extract[:597] + "..."
-                else:
-                    description = raw_extract
+                description = raw_extract
                 
                 return {
                     "description": description,
@@ -131,7 +155,7 @@ def _mock_company_intel(company: str) -> dict:
     return mock
 
 
-def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, use_mock: bool = False, provider: str = "gemini") -> dict:
+def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, sub_team: str = None, team_context: str = None, use_mock: bool = False, provider: str = "gemini") -> dict:
     """
     Fetch comprehensive company intelligence from Wikipedia and Gemini.
     """
@@ -153,19 +177,22 @@ def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, us
         "products": [],
         "recent_news": [],
         "culture_highlights": [],
+        "revenue_breakdown": [],
+        "org_chart_mermaid": "",
         "glassdoor_rating": None,
         "source": "Wikipedia API",
     }
     
     # 1. Base info via Wikipedia
     try:
-        # Using the existing fetch_wikipedia_summary for consistency
-        wiki_data = fetch_wikipedia_summary(company)
+        # Pass both company and sub_team to let the summary logic pick the best match
+        wiki_data = fetch_wikipedia_summary(company, sub_team=sub_team)
+        
         if wiki_data:
             intel["description"] = wiki_data.get("description", "")
             intel["wikipedia_url"] = wiki_data.get("wikipedia_url", "")
             intel["source"] = "Wikipedia API"
-            logger.info(f"Fetched Wikipedia summary for '{company}'")
+            logger.info(f"Fetched Wikipedia summary for '{company}' (with sub_team={sub_team})")
         else:
             intel["description"] = f"A prominent company in its sector."
             logger.warning(f"Wikipedia fetch failed for '{company}', using placeholder.")
@@ -179,11 +206,23 @@ def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, us
         from utils.llm import llm_generate_json
 
         bu = parsed_jd.get('business_unit', 'N/A') if parsed_jd else 'N/A'
-        bu_context = f" The candidate is applying to the '{bu}' business unit. " if bu and bu != 'N/A' else ""
+        team_context = f" and specific team/brand '{sub_team}'" if sub_team else ""
+        bu_context = f" The candidate is applying to the '{bu}' business unit{team_context}. " if bu and bu != 'N/A' else ""
         jd_context = f"\n\nContext - Job Description: {parsed_jd}" if parsed_jd else ""
         
         if settings.GEMINI_API_KEY != "placeholder":
-            prompt = f"""Provide company intelligence and networking strategy for the company "{company}", specifically regarding the role of "{role}".{bu_context}{jd_context}
+            prompt = f"""Provide company intelligence for "{company}", specifically focusing on the "{sub_team or bu}" group.
+            
+Target Team/Group: {sub_team or 'N/A'}
+Team Business Unit: {bu}
+Job Role: {role}
+{f"Extracted JD Team Context: {team_context}" if team_context else ""}
+
+Research Context (Wikipedia/Search):
+{wiki_data.get('description', '')[:15000] if wiki_data else ""}
+
+{bu_context}{jd_context}
+
 Return ONLY valid JSON with this exact structure (no markdown, no extra text):
 {{
   "ceo": "<current CEO full name, or 'N/A' if unknown>",
@@ -193,12 +232,17 @@ Return ONLY valid JSON with this exact structure (no markdown, no extra text):
   "ticker": "<Stock ticker symbol if public, e.g. 'AAPL', 'MSFT', 'ADBE', or 'N/A' if private/unknown>",
   "industry": "<primary industry sector>",
   "business_model": "<1-2 sentences about how they make money>",
-  "business_unit_overview": "<Brief intro to the exact business unit/department handling the '{role}'. Explaining what this specific business unit does at {company}. If the unit is 'N/A', STRICTLY say 'N/A' and do NOT invent a generic template.>",
+  "target_team_confirmed": "{sub_team or 'N/A'}",
+  "business_unit_overview": "<MANDATORY: If 'target_team_confirmed' is not 'N/A', you MUST research and describe the specific '{sub_team}' group at {company}. Explain its history (e.g. Ayco was acquired in 2003), its specialized services, and why it is unique within the broader {company} structure.>",
   "linkedin_networking": "<1-2 sentences advising the user which specific organizational teams, directors, or managers they should try connecting with on LinkedIn for the '{role}' role>",
   "culture_highlights": ["<3-4 key culture traits based on known reputation>"],
-  "recent_news": ["<2-3 real, verifiable recent events about this company>"]
+  "recent_news": ["<2-3 real, verifiable recent events about this company>"],
+  "revenue_breakdown": [
+    {{"division": "<Name of major business division>", "revenue_percentage": "<Approx % of total revenue, e.g. '70%'>"}}
+  ],
+  "org_chart_mermaid": "<A valid Mermaid.js flowchart string (e.g. 'graph TD; A[Company]-->B[Division];') showing the high-level company structure down to the specific business unit and role. Keep it simple and strictly valid Mermaid syntax.>"
 }}
-Use 'N/A' for any field you are not confident about. Do NOT invent data."""
+Use 'N/A' for any field you are not confident about. Do NOT invent data. If a revenue breakdown or org chart cannot be reasonably estimated, provide empty arrays or empty strings."""
 
             ai_data = llm_generate_json(prompt, provider=provider, max_tokens=900, temperature=0.0)
             

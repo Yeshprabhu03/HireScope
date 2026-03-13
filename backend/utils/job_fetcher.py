@@ -5,6 +5,7 @@ Uses Playwright for JavaScript-rendered sites, requests for static sites.
 """
 import logging
 import requests
+import sys
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -20,6 +21,8 @@ JS_RENDERED_DOMAINS = [
     "smartrecruiters.com",
     "icims.com",
     "oraclecloud.com",
+    "google.com/about/careers",
+    "careers.microsoft.com",
 ]
 
 # Domains that block all automated access — fail fast with a helpful message.
@@ -222,6 +225,9 @@ def extract_text_from_html(html: str) -> str:
         meta_context.append(f"Page Title: {soup.title.string}")
         
     og_desc = soup.find("meta", property="og:description")
+    if not og_desc:
+        og_desc = soup.find("meta", attrs={"name": "description"})
+        
     if og_desc and og_desc.get("content"):
         meta_context.append(f"Job Description Metadata: {og_desc.get('content')}")
 
@@ -256,6 +262,31 @@ def get_job_content(url: str, use_mock: bool = False) -> tuple[str, str]:
     # Normalize LinkedIn collection URLs — kept in case LinkedIn is ever removed
     # from BLOCKED_DOMAINS and re-enabled via Playwright.
     url = _normalize_linkedin_url(url)
+
+    # Use Playwright Subprocess for domains that require JS rendering
+    if _needs_browser(url):
+        import subprocess
+        import os
+        logger.info(f"JS-rendered domain detected. Using Playwright Subprocess for {url}")
+        script_path = os.path.join(os.path.dirname(__file__), "browser_fetch.py")
+        env = os.environ.copy()
+        try:
+            result = subprocess.run(
+                [sys.executable, script_path, url], 
+                capture_output=True, 
+                text=True, 
+                timeout=45,
+                env=env
+            )
+            if result.returncode == 0 and len(result.stdout.strip()) > 500:
+                logger.info(f"Successfully fetched {url} with Playwright Subprocess ({len(result.stdout)} chars)")
+                return result.stdout, result.stdout
+            else:
+                logger.error(f"Playwright Subprocess failed or returned short text for {url}. stderr: {result.stderr}")
+        except subprocess.TimeoutExpired:
+            logger.error(f"Playwright subprocess timed out for {url}")
+        except Exception as e:
+            logger.error(f"Error running Playwright subprocess for {url}: {e}")
 
     try:
         html = fetch_job_html(url)

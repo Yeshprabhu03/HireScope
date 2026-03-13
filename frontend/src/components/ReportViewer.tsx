@@ -27,7 +27,11 @@ export default function ReportViewer({ jobId, onBack }: Props) {
   useEffect(() => {
     const fetchReport = async () => {
       try {
-        const res = await fetch(`/api/jobs/${jobId}/report`)
+        const res = await fetch(`/api/jobs/${jobId}/report`, {
+          headers: {
+            'X-Pinggy-No-Screen': 'true'
+          }
+        })
         if (!res.ok) {
           const data = await res.json()
           throw new Error(data.detail || 'Failed to load report')

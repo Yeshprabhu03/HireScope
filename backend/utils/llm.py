@@ -79,12 +79,10 @@ def _generate_anthropic(prompt: str, max_tokens: int, temperature: float) -> str
 
 def _generate_openai(prompt: str, max_tokens: int, temperature: float) -> str:
     from openai import OpenAI
+    import httpx
     from config import settings
-
-    if settings.OPENAI_API_KEY == "placeholder":
-        raise ValueError("OpenAI API key not configured")
-
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    http_client = httpx.Client()
+    client = OpenAI(api_key=settings.OPENAI_API_KEY, http_client=http_client)
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
@@ -94,18 +92,63 @@ def _generate_openai(prompt: str, max_tokens: int, temperature: float) -> str:
     return response.choices[0].message.content.strip()
 
 
-def llm_generate_json(prompt: str, provider: Provider = "gemini", max_tokens: int = 2000, temperature: float = 0.0) -> dict:
+def llm_generate_json(prompt: str, provider: Provider = "gemini", max_tokens: int = 4000, temperature: float = 0.0) -> dict:
     """
     Send a prompt to the selected provider and parse the JSON response.
-    Handles markdown code blocks in responses.
+    Handles markdown code blocks and potential truncation.
     """
     raw = llm_generate(prompt, provider, max_tokens, temperature)
 
     # Strip markdown code blocks if present
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
+    processed = raw.strip()
+    if processed.startswith("```"):
+        # Find the first { and last } to be sure
+        first_brace = processed.find("{")
+        last_brace = processed.rfind("}")
+        if first_brace != -1 and last_brace != -1:
+            processed = processed[first_brace : last_brace + 1]
+        else:
+            # Fallback to old splitting logic if braces not found within blocks
+            processed = processed.split("```")[1]
+            if processed.startswith("json"):
+                processed = processed[4:]
+            processed = processed.strip()
+    
+    # Final cleanup: ensure it starts/ends with braces
+    # We try to find the first '{' and then find the corresponding matching '}' 
+    # to handle cases where there is extra text AFTER the JSON.
+    first_brace = processed.find("{")
+    if first_brace != -1:
+        # Simple brace counting to find the end of the first object
+        brace_count = 0
+        in_string = False
+        escape = False
+        for i in range(first_brace, len(processed)):
+            char = processed[i]
+            if char == '"' and not escape:
+                in_string = not in_string
+            if not in_string:
+                if char == "{":
+                    brace_count += 1
+                elif char == "}":
+                    brace_count -= 1
+                    if brace_count == 0:
+                        processed = processed[first_brace : i + 1]
+                        break
+            if char == "\\":
+                escape = not escape
+            else:
+                escape = False
 
-    return json.loads(raw)
+    try:
+        return json.loads(processed)
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON Parsing failed for provider {provider}. Error: {e}")
+        # If it's still failing with extra data, we can try to trim strictly to the error position
+        if "Extra data" in str(e):
+             try:
+                 # The 'pos' attribute of the error tells us where the extra data starts
+                 return json.loads(processed[:e.pos])
+             except:
+                 pass
+        raise

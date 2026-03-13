@@ -15,6 +15,10 @@ class ParsedJD(BaseModel):
     company: str = Field(default="Unknown", description="Company name")
     location: str = Field(default="Unknown", description="Job location (city, state, remote)")
     business_unit: str = Field(default="N/A", description="Specific business unit, product team, or department mentioned in the JD (e.g., 'Digital Experience Cloud', 'AWS', 'Investment Banking'). Use 'N/A' if truly not specified.")
+    sub_team: Optional[str] = Field(default=None, description="Specific internal team, desk, or sub-brand name (e.g. 'Ayco', 'ADK', 'Prime Services', 'Blue Ocean'). Leave None if not found.")
+    extracted_team_context: Optional[str] = Field(default=None, description="A 1-2 sentence summary of what the specific internal team/sub-team does, extracted directly from the JD text. Useful for research agents.")
+    page_type: str = Field(default="job_posting", description="Type of page: 'job_posting', 'career_page' (list of jobs), or 'other'")
+    detected_jobs: Optional[list[str]] = Field(default_factory=list, description="If page_type is 'career_page', list the job titles found on the page.")
     seniority_level: str = Field(
         default="mid",
         description="Seniority level: intern, junior, mid, senior, staff, principal, director",
@@ -55,6 +59,7 @@ MOCK_PARSED_JD = ParsedJD(
     company="Google",
     location="Mountain View, CA",
     business_unit="Google Cloud Platform",
+    sub_team="Anthos Service Mesh",
     seniority_level="senior",
     required_skills=["Python", "Java", "Go", "Distributed Systems", "Cloud Computing"],
     years_experience_min=5,
@@ -148,26 +153,30 @@ def parse_job_description(html: str, use_mock: bool = False, provider: str = "ge
         # Escape triple quotes to prevent breaking the f-string
         clean_text = clean_text.replace('"""', "'''")
 
-        prompt = f"""Extract structured data from this job posting text or JSON data.
-Return ONLY valid JSON that matches this exact schema (no markdown, no code blocks):
+        prompt = f"""Task: Extract job details into JSON.
+Schema:
 {json.dumps(schema, indent=2)}
 
-Important rules:
-- If a field is not found, use the default value from the schema
-- seniority_level must be one of: intern, junior, mid, senior, staff, principal, director
-- remote_policy must be one of: remote, hybrid, onsite, unknown
-- required_skills should include both technical skills and important soft skills
-- key_responsibilities should have at most 8 items, each concise
+Rules:
+- Output ONLY valid JSON.
+- If uncertain about company/title, look at Page Title first.
+- If it's a specific job, set page_type='job_posting'.
+- If it's a search results page/list, set page_type='career_page'.
+- LOOK CLOSELY for internal team names or sub-brands (e.g. 'Ayco' at Goldman, 'Azure Storage' at MS, 'Waymo' at Alphabet) and set `sub_team`.
+- If a `sub_team` is found, ALSO extract a 1-2 sentence `extracted_team_context` describing what that specific team does based on the JD text.
 
-Job Posting Text:
+Input:
 {clean_text}"""
 
-        parsed_data = llm_generate_json(prompt, provider=provider, max_tokens=2000, temperature=0.0)
+        parsed_data = llm_generate_json(prompt, provider=provider, max_tokens=4000, temperature=0.0)
         
         # Inject the raw text snippet back into the payload so downstream agents can read the actual JD!
         # We limit it to ~3000 characters to keep tokens low while providing massive context
         parsed_data["jd_text_snippet"] = clean_text[:3000]
         
+        if "detected_jobs" in parsed_data and parsed_data["detected_jobs"] is None:
+            parsed_data["detected_jobs"] = []
+            
         result = ParsedJD(**parsed_data)
         logger.info(f"Parsed JD: {result.job_title} at {result.company}")
         return result

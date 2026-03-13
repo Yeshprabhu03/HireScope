@@ -150,6 +150,8 @@ def generate_html_report(
     company_industry = company_intel.get("industry", "Technology")
     company_culture = company_intel.get("culture_highlights", [])
     company_news = company_intel.get("recent_news", [])
+    company_revenue_breakdown = company_intel.get("revenue_breakdown", [])
+    company_org_chart = company_intel.get("org_chart_mermaid", "")
 
     interview_rounds = interview_intel.get("rounds", [])
     tech_questions = interview_intel.get("technical_questions", [])
@@ -345,7 +347,12 @@ def generate_html_report(
       .two-col {{ grid-template-columns: 1fr; }}
       .company-info-grid {{ grid-template-columns: 1fr; }}
     }}
+    .mermaid {{
+      text-align: center;
+    }}
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({{startOnLoad:true}});</script>
 </head>
 <body>
 <div class="container">
@@ -409,6 +416,39 @@ def generate_html_report(
       </div>
     </div>
     {f'<div style="margin-top: 16px; padding: 12px; background: #eff6ff; border-radius: 8px; border-left: 4px solid #3b82f6;"><strong style="font-size: 14px; display: block; margin-bottom: 4px; color: #1e40af;">LinkedIn Networking Target</strong><p style="font-size: 13px; color: #1e3a8a; margin: 0;">{company_networking}</p></div>' if company_networking and company_networking != 'N/A' else ''}
+    
+    {f'''
+    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--gray-200);">
+      <strong style="font-size: 16px; display: block; margin-bottom: 12px; color: var(--primary);">Corporate Structure & Revenue</strong>
+      <div class="two-col">
+        {f"""
+        <div>
+          <strong style="font-size: 14px; display: block; margin-bottom: 8px; color: var(--gray-700);">Revenue Breakdown by Division</strong>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px; border: 1px solid var(--gray-200); border-radius: 6px; overflow: hidden; display: block;">
+            <thead style="background: var(--gray-100); border-bottom: 1px solid var(--gray-200); text-align: left; display: table; width: 100%;">
+              <tr>
+                <th style="padding: 8px 12px; font-weight: 600;">Division</th>
+                <th style="padding: 8px 12px; font-weight: 600; text-align: right;">Revenue %</th>
+              </tr>
+            </thead>
+            <tbody style="display: table; width: 100%;">
+              {"".join(f'<tr style="border-bottom: 1px solid var(--gray-100);"><td style="padding: 8px 12px; color: var(--gray-700);">{r.get("division", "")}</td><td style="padding: 8px 12px; text-align: right; font-weight: 600; color: var(--success);">{r.get("revenue_percentage", "")}</td></tr>' for r in company_revenue_breakdown)}
+            </tbody>
+          </table>
+          <p style="font-size: 11px; color: var(--gray-500); margin-top: 6px; font-style: italic;">Estimates based on recent public filings and AI analysis.</p>
+        </div>""" if company_revenue_breakdown else "<div><p style='font-size: 13px; color: var(--gray-500); font-style: italic;'>Revenue breakdown not available.</p></div>"}
+        {f"""
+        <div>
+          <strong style="font-size: 14px; display: block; margin-bottom: 8px; color: var(--gray-700);">Organizational Hierarchy</strong>
+          <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 6px; padding: 12px; overflow-x: auto;">
+            <div class="mermaid">
+{company_org_chart}
+            </div>
+          </div>
+        </div>""" if company_org_chart else "<div><p style='font-size: 13px; color: var(--gray-500); font-style: italic;'>Org chart not available.</p></div>"}
+      </div>
+    </div>
+    ''' if company_revenue_breakdown or company_org_chart else ''}
   </div>
 
   <!-- Skills -->
