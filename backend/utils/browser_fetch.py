@@ -6,7 +6,11 @@ async def fetch_rendered_text(url: str):
     async with async_playwright() as p:
         browser = await p.firefox.launch(headless=True)
         try:
-            page = await browser.new_page()
+            # Use a realistic User-Agent
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            page = await context.new_page()
             
             # 1. Navigate
             try:
@@ -19,7 +23,7 @@ async def fetch_rendered_text(url: str):
             main_content = ""
 
             # 3. Targeted extraction for Careers sites (Radical Pruning)
-            if any(domain in url for domain in ["google.com", "microsoft.com", "oraclecloud.com"]):
+            if any(domain in url for domain in ["google.com", "microsoft.com", "oraclecloud.com", "linkedin.com"]):
                 try:
                     # Wait for markers to appear if they are likely to be there
                     # This handles heavy SPAs like Eightfold (Microsoft)
@@ -33,15 +37,19 @@ async def fetch_rendered_text(url: str):
                         
                     # Radical Pruning: Always remove common noise tags first
                     await page.evaluate("""() => {
-                        const noise = document.querySelectorAll('script, style, noscript, iframe, nav, footer, header, .gc-sidebar, .gc-search-results, [aria-label="Filter"], .ms-search-list');
-                        noise.forEach(e => e.remove());
-                        
                         const markers = [
                         'Minimum qualifications', 'About the job', 'Responsibilities', 
                         'Required Qualifications', 'Job description', 'Qualifications', 
                         'YOUR IMPACT', 'OUR IMPACT', 'ABOUT GOLDMAN SACHS',
-                        'NYSE', 'ICE Data Services', 'Intercontinental Exchange'
+                        'NYSE', 'ICE Data Services', 'Intercontinental Exchange',
+                        'Role Summary', 'Employment type'
                     ];
+                        const jsonLdScripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+                        console.log(`JSON-LD count: ${jsonLdScripts.length}`);
+                        
+                        const noise = document.querySelectorAll('script:not([type="application/ld+json"]), style, noscript, iframe, nav, footer, header, .gc-sidebar, .gc-search-results, [aria-label="Filter"], .ms-search-list');
+                        noise.forEach(e => e.remove());
+                        
                         let mainContainer = document.querySelector('main, [role="main"], [aria-label="Job details"], #job-details, .job-description, [data-testid="job-details"]');
                         
                         if (!mainContainer) {
@@ -56,8 +64,9 @@ async def fetch_rendered_text(url: str):
                         
                         // Only prune if we found something substantial (~500 chars)
                         if (mainContainer && mainContainer.innerText.length > 500) {
-                            const content = mainContainer.innerHTML;
-                            document.body.innerHTML = content;
+                            document.body.innerHTML = '';
+                            jsonLdScripts.forEach(s => document.body.appendChild(s));
+                            document.body.appendChild(mainContainer);
                         }
                     }""")
                     

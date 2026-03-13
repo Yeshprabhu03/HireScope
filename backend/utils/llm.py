@@ -144,11 +144,24 @@ def llm_generate_json(prompt: str, provider: Provider = "gemini", max_tokens: in
         return json.loads(processed)
     except json.JSONDecodeError as e:
         logger.error(f"JSON Parsing failed for provider {provider}. Error: {e}")
+        logger.error(f"Raw response: {raw}")
         # If it's still failing with extra data, we can try to trim strictly to the error position
         if "Extra data" in str(e):
              try:
-                 # The 'pos' attribute of the error tells us where the extra data starts
                  return json.loads(processed[:e.pos])
              except:
                  pass
+        
+        # Another common case: raw newlines in strings
+        try:
+            # This is a bit aggressive but can help with multiline text that was not escaped
+            lines = processed.splitlines()
+            fixed_lines = []
+            for line in lines:
+                fixed_lines.append(line.strip())
+            joined = " ".join(fixed_lines)
+            return json.loads(joined)
+        except:
+            pass
+            
         raise

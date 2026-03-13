@@ -24,6 +24,7 @@ JS_RENDERED_DOMAINS = [
     "google.com/about/careers",
     "careers.microsoft.com",
     "ice.com",
+    "linkedin.com",
 ]
 
 # Domains that block all automated access — fail fast with a helpful message.
@@ -265,7 +266,7 @@ def get_job_content(url: str, use_mock: bool = False) -> tuple[str, str]:
     url = _normalize_linkedin_url(url)
 
     # Use Playwright Subprocess for domains that require JS rendering
-    if _needs_browser(url):
+    if _needs_browser(url) or "linkedin.com" in url:
         import subprocess
         import os
         logger.info(f"JS-rendered domain detected. Using Playwright Subprocess for {url}")
