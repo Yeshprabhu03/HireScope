@@ -134,14 +134,20 @@ def _detect_login_wall(html: str, url: str) -> bool:
             return True
 
     indicator_count = sum(1 for ind in login_indicators if ind.lower() in text.lower())
-    
-    # LinkedIn public pages naturally have "Sign in" and "Join now" in the header nav
-    threshold = 3 if "linkedin.com" in url else 2
+
+    # LinkedIn public pages naturally have "Sign in" and "Join now" in the header/footer
+    # Let's be more lenient for LinkedIn
+    threshold = 5 if "linkedin.com" in url else 2
     if indicator_count >= threshold:
+        # Check title too - an actual authwall title is exactly "LinkedIn Login, Sign in | LinkedIn"
+        if "linkedin.com" in url and any(kw in title.lower() for kw in ["login", "sign in", "authwall"]):
+             if not any(kw in title.lower() for kw in ["hiring", "jobs", "career"]):
+                 return True
+
         # One last safety check: if the schema or og:title exists with a real job, don't block it
         if "linkedin.com" in url and soup.find("meta", property="og:title"):
             og_title = soup.find("meta", property="og:title").get("content", "")
-            if "hiring" in og_title.lower() or "job" in og_title.lower():
+            if any(kw in og_title.lower() for kw in ["hiring", "job", "career"]):
                 return False
         return True
 
@@ -180,7 +186,7 @@ def fetch_job_html(url: str) -> str:
     Retries up to 2 times with exponential backoff.
     """
     logger.info(f"Fetching job HTML from: {url}")
-    
+
     def _fetch_with_requests():
         try:
             print(f"Fallback to requests for {url}")
@@ -217,7 +223,7 @@ def fetch_job_html(url: str) -> str:
 def extract_text_from_html(html: str) -> str:
     """Extract clean text content from HTML, removing scripts and styles."""
     soup = BeautifulSoup(html, "lxml")
-    
+
     # Extract meta tags (crucial for SPAs like Oracle Cloud / Workday where DOM is empty)
     meta_context = []
     og_title = soup.find("meta", property="og:title")
@@ -225,25 +231,25 @@ def extract_text_from_html(html: str) -> str:
         meta_context.append(f"Job Title Metadata: {og_title.get('content')}")
     elif soup.title and soup.title.string:
         meta_context.append(f"Page Title: {soup.title.string}")
-        
+
     og_desc = soup.find("meta", property="og:description")
     if not og_desc:
         og_desc = soup.find("meta", attrs={"name": "description"})
-        
+
     if og_desc and og_desc.get("content"):
         meta_context.append(f"Job Description Metadata: {og_desc.get('content')}")
 
     for tag in soup(["script", "style", "nav", "footer", "header"]):
         tag.decompose()
-        
+
     text = soup.get_text(separator="\n", strip=True)
     # Remove excessive blank lines
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    
+
     final_text = "\n".join(lines)
     if meta_context:
         final_text = "\n".join(meta_context) + "\n\n--- Page Content ---\n\n" + final_text
-        
+
     return final_text
 
 
@@ -274,9 +280,9 @@ def get_job_content(url: str, use_mock: bool = False) -> tuple[str, str]:
         env = os.environ.copy()
         try:
             result = subprocess.run(
-                [sys.executable, script_path, url], 
-                capture_output=True, 
-                text=True, 
+                [sys.executable, script_path, url],
+                capture_output=True,
+                text=True,
                 timeout=45,
                 env=env
             )
@@ -299,8 +305,8 @@ def get_job_content(url: str, use_mock: bool = False) -> tuple[str, str]:
             logger.warning(f"Login wall detected for {url}")
             if "linkedin.com" in url:
                 raise ValueError(
-                    "LinkedIn requires login to view this job. "
-                    "Please use a different job board (Greenhouse, Lever, Indeed, etc.)"
+                    "LinkedIn login required. LinkedIn is strictly blocking automated access to this specific job. "
+                    "Try using a direct company careers page, Greenhouse, or Lever link for better results."
                 )
             else:
                 raise ValueError(f"The job page at {url} requires login/authentication to view.")

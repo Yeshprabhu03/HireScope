@@ -79,7 +79,7 @@ MOCK_PARSED_JD = ParsedJD(
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-def parse_job_description(html: str, use_mock: bool = False, provider: str = "gemini") -> ParsedJD:
+async def parse_job_description(html: str, use_mock: bool = False, provider: str = "gemini") -> ParsedJD:
     """
     Parse a job description HTML using Claude to extract structured data.
     Falls back to mock data if use_mock=True or API call fails.
@@ -91,65 +91,65 @@ def parse_job_description(html: str, use_mock: bool = False, provider: str = "ge
     try:
         from utils.llm import llm_generate_json
         from bs4 import BeautifulSoup
-        
+
         schema = ParsedJD.model_json_schema()
-        
+
         # Optimize token usage by stripping HTML tags
         soup = BeautifulSoup(html, "html.parser")
-        
+
         # Save script tags in case the page is a SPA with JSON variables
         # Also specifically look for structured schema.org data (application/ld+json)
         scripts = soup.find_all('script')
         json_ld_scripts = soup.find_all('script', type='application/ld+json')
         json_ld_text = "\n".join([s.get_text() for s in json_ld_scripts if s.get_text()])
-        
-        # Explicitly extract Next.js SPA data dictionaries 
+
+        # Explicitly extract Next.js SPA data dictionaries
         next_data_script = soup.find('script', id='__NEXT_DATA__')
         next_data_text = next_data_script.get_text() if next_data_script and next_data_script.get_text() else ""
-        
+
         # Remove script and style elements for clean text extraction
         for script in soup(["script", "style", "noscript"]):
             script.decompose()
-            
-            
+
+
         # Extract meta tags explicitly and label them so the LLM knows their significance
         extracted_meta = []
         if soup.title and soup.title.string:
             extracted_meta.append(f"Page Title: {soup.title.string}")
-            
+
         og_title = soup.find("meta", property="og:title")
         if og_title and og_title.get("content"):
             extracted_meta.append(f"Job Title Metadata (og:title): {og_title.get('content')}")
-            
+
         og_desc = soup.find("meta", property="og:description")
         if og_desc and og_desc.get("content"):
             extracted_meta.append(f"Job Description Metadata (og:description): {og_desc.get('content')}")
-            
+
         meta_text = "\n".join(extracted_meta)
-            
+
         # Get text content with minimal markdown-like structure
         clean_text = soup.get_text(separator="\n", strip=True)
-        
+
         # Prepend the meta tag content to give clear hints about Title and Description
         if meta_text:
             clean_text = f"--- CRITICAL METADATA ---\n{meta_text}\n--- PAGE CONTENT ---\n{clean_text}"
-            
+
         # Always append Structured Schema JSON if it exists!
         if json_ld_text:
             clean_text = f"{clean_text}\n\n--- STRUCTURED JOB DATA ---\n{json_ld_text}"
-            
+
         if next_data_text:
             clean_text = f"{clean_text}\n\n--- NEXT.JS APP STATE ---\n{next_data_text}"
-            
-        # If the extracted visual text is very short (e.g. Oracle Cloud JS page), 
+
+        # If the extracted visual text is very short (e.g. Oracle Cloud JS page),
         # append ALL script contents so the LLM can parse the ugly JSON state data.
         if len(clean_text) < 500:
             script_text = "\n".join([s.get_text() for s in scripts if s.get_text() and s not in json_ld_scripts and s != next_data_script])
             clean_text += "\n\n--- JSON/JAVASCRIPT APP STATE ---\n\n" + script_text
-            
-        # Truncate to a reasonable length 
+
+        # Truncate to a reasonable length
         clean_text = clean_text[:30000]
-        
+
         # Escape triple quotes to prevent breaking the f-string
         clean_text = clean_text.replace('"""', "'''")
 
@@ -169,15 +169,15 @@ Rules:
 Input:
 {clean_text}"""
 
-        parsed_data = llm_generate_json(prompt, provider=provider, max_tokens=8000, temperature=0.0)
-        
+        parsed_data = await llm_generate_json(prompt, provider=provider, max_tokens=8000, temperature=0.0)
+
         # Inject the raw text snippet back into the payload so downstream agents can read the actual JD!
         # We limit it to ~3000 characters to keep tokens low while providing massive context
         parsed_data["jd_text_snippet"] = clean_text[:3000]
-        
+
         if "detected_jobs" in parsed_data and parsed_data["detected_jobs"] is None:
             parsed_data["detected_jobs"] = []
-            
+
         result = ParsedJD(**parsed_data)
         logger.info(f"Parsed JD: {result.job_title} at {result.company}")
         return result

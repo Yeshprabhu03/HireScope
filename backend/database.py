@@ -1,300 +1,283 @@
-import sqlite3
 import json
 import logging
-import os
 from datetime import datetime
+from typing import Optional, List, Dict, Any
+from uuid import UUID, uuid4
+
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from sqlmodel import Field, SQLModel, create_engine, select, Session, Column, JSON, text
+from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
+
 from config import settings
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(settings.DATA_DIR, "hirescope.db")
+# Update URL to use asyncpg
+db_url = settings.DATABASE_URL
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-def get_connection():
-    """Create a database connection and enforce schema creation if missing."""
-    os.makedirs(settings.DATA_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    _initialize_schema(conn)
-    return conn
+engine = create_async_engine(db_url, echo=False, future=True)
 
-def _initialize_schema(conn):
-    """Create the initial Phase 1 tables if they do not exist."""
-    cursor = conn.cursor()
-    
-    # 1. Job Postings Table (Historical JD Database & Deduplication)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS job_postings (
-            job_url TEXT PRIMARY KEY,
-            company TEXT,
-            job_title TEXT,
-            parsed_jd TEXT, -- JSON payload of the entire parsed JD
-            raw_html TEXT,
-            scraped_at TIMESTAMP,
-            first_seen TIMESTAMP
-        )
-    """)
-    
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_company_title ON job_postings(company, job_title)")
+async def init_db():
+    """Initialize the database and create tables."""
+    async with engine.begin() as conn:
+        # await conn.run_sync(SQLModel.metadata.drop_all) # Dangerous, only for dev reset
+        await conn.run_sync(SQLModel.metadata.create_all)
+    logger.info("Database initialized with SQLModel schemas.")
 
-    # 2. Company Intelligence Snapshots (Wikipedia Cache)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS company_snapshots (
-            company TEXT PRIMARY KEY,
-            snapshot_date TIMESTAMP,
-            data TEXT -- JSON payload from company intel
-        )
-    """)
-    
-    # 3. Salary Observations (Continuous Learning Pipeline)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS salary_observations (
-            job_url TEXT PRIMARY KEY,
-            company TEXT,
-            job_title TEXT,
-            location TEXT,
-            seniority TEXT,
-            jd_salary_mentioned TEXT,
-            jd_salary_min NUMERIC,
-            jd_salary_max NUMERIC,
-            h1b_median NUMERIC,
-            observed_at TIMESTAMP,
-            confidence_score NUMERIC
-        )
-    """)
-    # 4. Interview Corpus (On-Demand Scraping)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS interview_corpus (
-            id TEXT PRIMARY KEY,
-            company TEXT,
-            role TEXT,
-            role_category TEXT,
-            experience_text TEXT,
-            scraped_at TIMESTAMP,
-            indexed_in_chromadb BOOLEAN
-        )
-    """)
-    
-    # 5. User Feedback (Continuous Learning)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS user_feedback (
-            id TEXT PRIMARY KEY,
-            job_id TEXT,
-            section TEXT,
-            feedback_type INTEGER,
-            source_text TEXT,
-            created_at TIMESTAMP
-        )
-    """)
-    
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_salary_lookup ON salary_observations(company, job_title, location)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_interview_lookup ON interview_corpus(company, role_category)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_feedback_job ON user_feedback(job_id)")
-    
-    conn.commit()
+async def get_session() -> SQLModelAsyncSession:
+    async_session = sessionmaker(
+        engine, class_=SQLModelAsyncSession, expire_on_commit=False
+    )
+    async with async_session() as session:
+        yield session
 
-# --- Job Postings Functions ---
+# --- Models ---
 
-def get_job_passing(job_url: str):
-    """Retrieve a cached job posting if it exists."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM job_postings WHERE job_url = ?", (job_url,))
-        row = cursor.fetchone()
-        if row:
-            data = dict(row)
-            data["parsed_jd"] = json.loads(data["parsed_jd"]) if data["parsed_jd"] else None
-            return data
+class JobPosting(SQLModel, table=True):
+    __tablename__ = "job_postings"
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    job_url: str = Field(index=True, unique=True)
+    company: Optional[str] = None
+    job_title: Optional[str] = None
+    parsed_jd: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    raw_html: Optional[str] = None
+    scraped_at: datetime = Field(default_factory=datetime.now)
+    first_seen: datetime = Field(default_factory=datetime.now)
+
+class CompanySnapshot(SQLModel, table=True):
+    __tablename__ = "company_snapshots"
+    company: str = Field(primary_key=True)
+    snapshot_date: datetime = Field(default_factory=datetime.now)
+    data: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+
+class SalaryObservation(SQLModel, table=True):
+    __tablename__ = "salary_observations"
+    job_url: str = Field(primary_key=True)
+    company: str = Field(index=True)
+    job_title: str = Field(index=True)
+    location: Optional[str] = Field(default=None, index=True)
+    seniority: Optional[str] = None
+    jd_salary_mentioned: Optional[str] = None
+    jd_salary_min: Optional[float] = None
+    jd_salary_max: Optional[float] = None
+    h1b_median: Optional[float] = None
+    observed_at: datetime = Field(default_factory=datetime.now)
+    confidence_score: float = Field(default=0.0)
+
+class InterviewExperience(SQLModel, table=True):
+    __tablename__ = "interview_corpus"
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    company: str = Field(index=True)
+    role: Optional[str] = None
+    role_category: Optional[str] = Field(default=None, index=True)
+    experience_text: str
+    scraped_at: datetime = Field(default_factory=datetime.now)
+    indexed_in_chromadb: bool = Field(default=True)
+
+class UserFeedback(SQLModel, table=True):
+    __tablename__ = "user_feedback"
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    job_id: str = Field(index=True)
+    section: str
+    feedback_type: int  # 1 for upvote, -1 for downvote
+    source_text: str
+    created_at: datetime = Field(default_factory=datetime.now)
+
+# --- Service Functions (Async) ---
+
+async def get_job_posting(job_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve a cached job posting by its UUID."""
+    async with SQLModelAsyncSession(engine) as session:
+        try:
+            uid = UUID(job_id)
+        except ValueError:
+            # Maybe it's a URL? Let's check by URL as fallback
+            statement = select(JobPosting).where(JobPosting.job_url == job_id)
+            results = await session.execute(statement)
+            job = results.scalar_one_or_none()
+            return job.model_dump() if job else None
+
+        statement = select(JobPosting).where(JobPosting.id == uid)
+        results = await session.execute(statement)
+        job = results.scalar_one_or_none()
+        if job:
+            return job.model_dump()
         return None
 
-def save_job_posting(job_url: str, company: str, job_title: str, parsed_jd: dict, raw_html: str):
+async def save_job_posting(job_id: str, job_url: str, company: str, job_title: str, parsed_jd: dict, raw_html: str):
     """Insert or update a job posting in the database."""
-    now = datetime.now().isoformat()
-    parsed_json = json.dumps(parsed_jd)
-    
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        # Check if exists to preserve first_seen
-        cursor.execute("SELECT first_seen FROM job_postings WHERE job_url = ?", (job_url,))
-        row = cursor.fetchone()
-        first_seen = row["first_seen"] if row else now
-        
-        cursor.execute("""
-            INSERT INTO job_postings (job_url, company, job_title, parsed_jd, raw_html, scraped_at, first_seen)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(job_url) DO UPDATE SET 
-                company=excluded.company,
-                job_title=excluded.job_title,
-                parsed_jd=excluded.parsed_jd,
-                raw_html=excluded.raw_html,
-                scraped_at=excluded.scraped_at;
-        """, (job_url, company, job_title, parsed_json, raw_html, now, first_seen))
-        conn.commit()
+    async with SQLModelAsyncSession(engine) as session:
+        uid = UUID(job_id)
+        statement = select(JobPosting).where(JobPosting.id == uid)
+        results = await session.execute(statement)
+        job = results.scalar_one_or_none()
 
-# --- Company Intelligence Functions ---
+        if job:
+            job.job_url = job_url
+            job.company = company
+            job.job_title = job_title
+            job.parsed_jd = parsed_jd
+            job.raw_html = raw_html
+            job.scraped_at = datetime.now()
+        else:
+            job = JobPosting(
+                id=uid,
+                job_url=job_url,
+                company=company,
+                job_title=job_title,
+                parsed_jd=parsed_jd,
+                raw_html=raw_html
+            )
+            session.add(job)
 
-def get_company_snapshot(company: str):
+        await session.commit()
+
+async def get_company_snapshot(company: str) -> Optional[Dict[str, Any]]:
     """Retrieve a cached company snapshot if it exists."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM company_snapshots WHERE company = ?", (company,))
-        row = cursor.fetchone()
-        if row:
-            data = dict(row)
-            data["data"] = json.loads(data["data"]) if data["data"] else None
-            return data
+    async with SQLModelAsyncSession(engine) as session:
+        statement = select(CompanySnapshot).where(CompanySnapshot.company == company)
+        results = await session.execute(statement)
+        snap = results.scalar_one_or_none()
+        if snap:
+            return snap.model_dump()
         return None
 
-def save_company_snapshot(company: str, data: dict):
+async def save_company_snapshot(company: str, data: dict):
     """Insert or update a company intelligence snapshot."""
-    now = datetime.now().isoformat()
-    data_json = json.dumps(data)
-    
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO company_snapshots (company, snapshot_date, data)
-            VALUES (?, ?, ?)
-            ON CONFLICT(company) DO UPDATE SET 
-                snapshot_date=excluded.snapshot_date,
-                data=excluded.data;
-        """, (company, now, data_json))
-        conn.commit()
+    async with SQLModelAsyncSession(engine) as session:
+        statement = select(CompanySnapshot).where(CompanySnapshot.company == company)
+        results = await session.execute(statement)
+        snap = results.scalar_one_or_none()
 
-# --- Salary Intelligence Functions ---
+        if snap:
+            snap.data = data
+            snap.snapshot_date = datetime.now()
+        else:
+            snap = CompanySnapshot(company=company, data=data)
+            session.add(snap)
 
+        await session.commit()
+
+# --- Salary Logic ---
 import re
 
-def extract_salary_numbers(salary_string: str) -> tuple[int|None, int|None]:
-    """
-    Extracts minimum and maximum salary integers from a string.
-    Example: '150k - 200,000 USD' -> (150000, 200000)
-    """
+def extract_salary_numbers(salary_string: str) -> tuple[Optional[int], Optional[int]]:
     if not salary_string or not isinstance(salary_string, str):
         return None, None
-        
     salary_string = salary_string.lower()
-    
-    # Extract all numbers, handling commas and 'k' multipliers
     numbers = []
-    # Pattern looks for numbers with optional commas, possibly followed by 'k'
     pattern = r'\$?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?|\d+(?:\.\d+)?)\s*(k)?'
     matches = re.finditer(pattern, salary_string)
-    
     for match in matches:
         num_str = match.group(1).replace(',', '')
         try:
             val = float(num_str)
-            # If it has a 'k' or is too small to be a full salary, multiply
             if match.group(2) == 'k' or val < 1000:
                 val *= 1000
-            
-            # Filter out hourly rates or tiny numbers
             if val > 30000:
                 numbers.append(int(val))
         except ValueError:
             continue
-            
     if not numbers:
         return None, None
     elif len(numbers) == 1:
         return numbers[0], numbers[0]
     else:
-        # Sort and take the lowest as min, highest as max to handle weird ranges
         numbers.sort()
         return numbers[0], numbers[-1]
 
-def save_salary_observation(job_url: str, company: str, job_title: str, location: str, seniority: str, jd_salary_mentioned: str, h1b_median: float = None, confidence_score: float = 0.0):
-    """Parse JD salary text and insert observational record."""
+async def save_salary_observation(job_url: str, company: str, job_title: str, location: str, seniority: str, jd_salary_mentioned: str, h1b_median: float = None, confidence_score: float = 0.0):
     min_sal, max_sal = extract_salary_numbers(jd_salary_mentioned)
-    now = datetime.now().isoformat()
-    
-    # Only store if we found actual numbers to learn from
     if not min_sal and not max_sal:
         return
-        
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO salary_observations (job_url, company, job_title, location, seniority, jd_salary_mentioned, jd_salary_min, jd_salary_max, h1b_median, observed_at, confidence_score)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(job_url) DO UPDATE SET 
-                company=excluded.company,
-                job_title=excluded.job_title,
-                location=excluded.location,
-                seniority=excluded.seniority,
-                jd_salary_mentioned=excluded.jd_salary_mentioned,
-                jd_salary_min=excluded.jd_salary_min,
-                jd_salary_max=excluded.jd_salary_max,
-                h1b_median=excluded.h1b_median,
-                observed_at=excluded.observed_at,
-                confidence_score=excluded.confidence_score;
-        """, (job_url, company, job_title, location, seniority, jd_salary_mentioned, min_sal, max_sal, h1b_median, now, confidence_score))
-        conn.commit()
 
-def get_historical_salary(company: str, job_title: str, location: str) -> dict:
-    """Retrieve robust historical average if enough observations exist."""
-    # Build a permissive title match (e.g. "Software Engineer" matches "Senior Software Engineer")
-    # For SQLite we use basic LIKE
+    async with SQLModelAsyncSession(engine) as session:
+        statement = select(SalaryObservation).where(SalaryObservation.job_url == job_url)
+        results = await session.execute(statement)
+        obs = results.scalar_one_or_none()
+
+        if obs:
+            obs.company = company
+            obs.job_title = job_title
+            obs.location = location
+            obs.seniority = seniority
+            obs.jd_salary_mentioned = jd_salary_mentioned
+            obs.jd_salary_min = min_sal
+            obs.jd_salary_max = max_sal
+            obs.h1b_median = h1b_median
+            obs.observed_at = datetime.now()
+            obs.confidence_score = confidence_score
+        else:
+            obs = SalaryObservation(
+                job_url=job_url,
+                company=company,
+                job_title=job_title,
+                location=location,
+                seniority=seniority,
+                jd_salary_mentioned=jd_salary_mentioned,
+                jd_salary_min=min_sal,
+                jd_salary_max=max_sal,
+                h1b_median=h1b_median,
+                confidence_score=confidence_score
+            )
+            session.add(obs)
+        await session.commit()
+
+async def get_historical_salary(company: str, job_title: str, location: str) -> Optional[Dict[str, Any]]:
+    """Retrieve robust historical average using PostgreSQL-safe logic."""
     title_pattern = f"%{job_title}%"
-    
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        # Look back up to 2 years
-        cursor.execute("""
-            SELECT 
-                COUNT(*) as obs_count, 
-                AVG(jd_salary_min) as avg_min, 
-                AVG(jd_salary_max) as avg_max
-            FROM salary_observations
-            WHERE company = ? 
-              AND job_title LIKE ? 
-              AND jd_salary_min IS NOT NULL
-              AND datetime(observed_at) > datetime('now', '-2 years')
-        """, (company, title_pattern))
-        
-        row = cursor.fetchone()
-        
-        if row and row['obs_count'] >= 5:
+    async with SQLModelAsyncSession(engine) as session:
+        # Using raw SQL for the aggregate to handle the title pattern match easily
+        # PostgreSQL syntax
+        from sqlalchemy import func
+        statement = select(
+            func.count(SalaryObservation.job_url).label("obs_count"),
+            func.avg(SalaryObservation.jd_salary_min).label("avg_min"),
+            func.avg(SalaryObservation.jd_salary_max).label("avg_max")
+        ).where(
+            SalaryObservation.company == company,
+            SalaryObservation.job_title.like(title_pattern),
+            SalaryObservation.jd_salary_min != None,
+            SalaryObservation.observed_at > text("now() - interval '2 years'")
+        )
+
+        results = await session.execute(statement)
+        row = results.first()
+
+        if row and row.obs_count >= 5:
             return {
-                "count": row['obs_count'],
-                "avg_min": int(row['avg_min']) if row['avg_min'] else None,
-                "avg_max": int(row['avg_max']) if row['avg_max'] else None
+                "count": row.obs_count,
+                "avg_min": int(row.avg_min) if row.avg_min else None,
+                "avg_max": int(row.avg_max) if row.avg_max else None
             }
         return None
 
-# --- Interview Corpus Functions ---
-
-import uuid
-
-def save_interview_experiences(company: str, role: str, role_category: str, experiences: list[str]) -> list[str]:
-    """Bulk insert new interview experiences into SQLite."""
-    now = datetime.now().isoformat()
-    inserted_ids = []
-    
-    with get_connection() as conn:
-        cursor = conn.cursor()
+async def save_interview_experiences(company: str, role: str, role_category: str, experiences: List[str]) -> List[str]:
+    async with SQLModelAsyncSession(engine) as session:
+        inserted_ids = []
         for exp in experiences:
-            exp_id = str(uuid.uuid4())
-            cursor.execute("""
-                INSERT INTO interview_corpus (id, company, role, role_category, experience_text, scraped_at, indexed_in_chromadb)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (exp_id, company, role, role_category, exp, now, True))
-            inserted_ids.append(exp_id)
-        conn.commit()
-        
-    return inserted_ids
+            obj = InterviewExperience(
+                company=company,
+                role=role,
+                role_category=role_category,
+                experience_text=exp
+            )
+            session.add(obj)
+            await session.flush()
+            inserted_ids.append(str(obj.id))
+        await session.commit()
+        return inserted_ids
 
-# --- User Feedback Functions ---
-
-def save_user_feedback(job_id: str, section: str, feedback_type: int, source_text: str):
-    """Log user thumbs-up (1) or thumbs-down (-1) feedback."""
-    now = datetime.now().isoformat()
-    feedback_id = str(uuid.uuid4())
-    
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO user_feedback (id, job_id, section, feedback_type, source_text, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (feedback_id, job_id, section, feedback_type, source_text, now))
-        conn.commit()
+async def save_user_feedback(job_id: str, section: str, feedback_type: int, source_text: str):
+    async with SQLModelAsyncSession(engine) as session:
+        feedback = UserFeedback(
+            job_id=job_id,
+            section=section,
+            feedback_type=feedback_type,
+            source_text=source_text
+        )
+        session.add(feedback)
+        await session.commit()

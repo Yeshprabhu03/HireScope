@@ -99,3 +99,4 @@ current_jd.json
 *.html
 repro_output.txt
 clear_*.py
+backend/pgdata/

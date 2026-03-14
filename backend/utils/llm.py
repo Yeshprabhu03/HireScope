@@ -21,22 +21,22 @@ Provider = Literal["gemini", "anthropic", "openai"]
     # Optional: we can be specific about which exceptions to retry on if we want,
     # but retrying on all general exceptions is safe for LLM calls.
 )
-def llm_generate(prompt: str, provider: Provider = "gemini", max_tokens: int = 2000, temperature: float = 0.0) -> str:
+async def llm_generate(prompt: str, provider: Provider = "gemini", max_tokens: int = 2000, temperature: float = 0.0) -> str:
     """
     Send a prompt to the selected LLM provider and return the raw text response.
     Retries automatically on failures (e.g. rate limits, 500s) with exponential backoff.
     """
     if provider == "gemini":
-        return _generate_gemini(prompt, max_tokens, temperature)
+        return await _generate_gemini(prompt, max_tokens, temperature)
     elif provider == "anthropic":
-        return _generate_anthropic(prompt, max_tokens, temperature)
+        return await _generate_anthropic(prompt, max_tokens, temperature)
     elif provider == "openai":
-        return _generate_openai(prompt, max_tokens, temperature)
+        return await _generate_openai(prompt, max_tokens, temperature)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
 
-def _generate_gemini(prompt: str, max_tokens: int, temperature: float) -> str:
+async def _generate_gemini(prompt: str, max_tokens: int, temperature: float) -> str:
     import google.generativeai as genai
     from config import settings
 
@@ -47,21 +47,21 @@ def _generate_gemini(prompt: str, max_tokens: int, temperature: float) -> str:
         temperature=temperature,
     )
 
-    response = model.generate_content(prompt, generation_config=generation_config)
+    response = await model.generate_content_async(prompt, generation_config=generation_config)
     if not response or not response.text:
         raise ValueError("Gemini returned empty response")
     return response.text.strip()
 
 
-def _generate_anthropic(prompt: str, max_tokens: int, temperature: float) -> str:
-    from anthropic import Anthropic
+async def _generate_anthropic(prompt: str, max_tokens: int, temperature: float) -> str:
+    from anthropic import AsyncAnthropic
     from config import settings
 
     if settings.ANTHROPIC_API_KEY == "placeholder":
         raise ValueError("Anthropic API key not configured")
 
-    client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-    response = client.messages.create(
+    client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    response = await client.messages.create(
         model="claude-3-5-sonnet-20240620",
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
@@ -70,13 +70,13 @@ def _generate_anthropic(prompt: str, max_tokens: int, temperature: float) -> str
     return response.content[0].text.strip()
 
 
-def _generate_openai(prompt: str, max_tokens: int, temperature: float) -> str:
-    from openai import OpenAI
+async def _generate_openai(prompt: str, max_tokens: int, temperature: float) -> str:
+    from openai import AsyncOpenAI
     import httpx
     from config import settings
-    http_client = httpx.Client()
-    client = OpenAI(api_key=settings.OPENAI_API_KEY, http_client=http_client)
-    response = client.chat.completions.create(
+    http_client = httpx.AsyncClient()
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, http_client=http_client)
+    response = await client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=max_tokens,
@@ -85,12 +85,12 @@ def _generate_openai(prompt: str, max_tokens: int, temperature: float) -> str:
     return response.choices[0].message.content.strip()
 
 
-def llm_generate_json(prompt: str, provider: Provider = "gemini", max_tokens: int = 4000, temperature: float = 0.0) -> dict:
+async def llm_generate_json(prompt: str, provider: Provider = "gemini", max_tokens: int = 4000, temperature: float = 0.0) -> dict:
     """
     Send a prompt to the selected provider and parse the JSON response.
     Handles markdown code blocks and potential truncation.
     """
-    raw = llm_generate(prompt, provider, max_tokens, temperature)
+    raw = await llm_generate(prompt, provider, max_tokens, temperature)
 
     # Strip markdown code blocks if present
     processed = raw.strip()

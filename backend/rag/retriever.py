@@ -92,7 +92,7 @@ def _keyword_search_corpus(query: str, company: str, role: str, limit: int, **kw
     }
 
 
-def retrieve_relevant_experiences(
+async def retrieve_relevant_experiences(
     query: str,
     company: str = "",
     role: str = "",
@@ -115,8 +115,8 @@ def retrieve_relevant_experiences(
 
         collection = get_collection()
         if collection.count() > 0:
-            query_embedding = get_embedding(query)
-            
+            query_embedding = await get_embedding(query)
+
             # Try strict match (Company + Role Category)
             where = {}
             if company and company.lower() not in ("unknown", "n/a", ""):
@@ -136,7 +136,7 @@ def retrieve_relevant_experiences(
                     query_kwargs["where"] = where
 
             results = collection.query(**query_kwargs)
-            
+
             # We must strictly return only company-matched results to prevent cross-contamination
             # of simulated scraper data across different companies.
             if results.get("documents") and results["documents"][0]:
@@ -154,10 +154,10 @@ def retrieve_relevant_experiences(
     # Keyword-based fallback over JSON corpus
     logger.info(f"Using keyword search fallback for company='{company}', role='{role}'")
     results = _keyword_search_corpus(query, company, role, limit, industry=industry)
-    
+
     # If still no results and we have an industry, try a broad industry query
     if (not results.get("documents") or not results["documents"][0]) and industry:
         logger.info(f"Broadening search to industry: {industry}")
         results = _keyword_search_corpus(f"{industry} interview process questions", "", role, limit, industry=industry)
-        
+
     return results

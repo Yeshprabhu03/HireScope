@@ -2,7 +2,7 @@
 Company Intelligence: fetches company data from Wikipedia API and public sources.
 """
 import logging
-import requests
+import httpx
 from typing import Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -53,13 +53,13 @@ def resolve_company_name(company_input: str) -> str:
     return aliases.get(company_input.upper().strip(), company_input.strip())
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), reraise=False)
-def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, is_retry: bool = False) -> Optional[dict]:
+async def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, is_retry: bool = False) -> Optional[dict]:
     """Fetch company summary from Wikipedia API."""
     # Resolve any known abbreviation first
     resolved_company = resolve_company_name(company)
 
     # Build a list of name variations to try
-    suffixes_to_strip = [" Inc.", " LLC", " Corp.", " Corporation", " Holdings", " Group", " Ltd.", " Limited", ", Inc.", ", LLC"]
+    suffixes_to_strip = [" Inc.", " LLC", " Corp.", " Corporation", " Holdings", " Group", " Ltd.", " Limited", ", Inc.", ", LLC", ", Holdings"]
 
     search_names = []
     # If sub_team is provided, try that first as a specific entity
@@ -73,7 +73,6 @@ def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, is_ret
     search_names.append(resolved_company)
 
     # Progressively strip suffixes iteratively
-    suffixes_to_strip = [" Inc.", " LLC", " Corp.", " Corporation", " Holdings", " Group", " Ltd.", " Limited", ", Inc.", ", LLC", ", Holdings"]
     name = resolved_company
     changed = True
     while changed:
@@ -89,87 +88,84 @@ def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, is_ret
 
     search_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 
-    # 1. New Search Pass: If sub_team is provided, use the Search API to find the best title
-    if sub_team and sub_team != "N/A" and not is_retry:
-        try:
-            logger.info(f"Searching Wikipedia for specific sub-team: '{sub_team}' at {company}")
-            search_api_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={requests.utils.quote(f'{company} {sub_team}')}&format=json"
-            search_res = requests.get(search_api_url, headers={"User-Agent": "HireScope/1.0"}, timeout=10)
-            if search_res.status_code == 200:
-                results = search_res.json().get("query", {}).get("search", [])
-                for result in results[:5]: # Try top 5 results for relevance
-                    best_title = result["title"]
-                    # Validate title: must contain company name or sub_team name to be considered
-                    # OR be the #1 result if the search was for the company + sub_team
-                    if (sub_team.lower() in best_title.lower() or
-                        company.lower() in best_title.lower() or
-                        (result == results[0] and len(best_title) > 0)):
-                        if best_title.lower() != resolved_company.lower() and best_title not in search_names:
-                            logger.info(f"Found specific Wikipedia title from search: '{best_title}'")
-                            search_names.insert(0, best_title)
-                            break # Found a good one
-        except Exception as e:
-            logger.warning(f"Wikipedia sub-team search failed: {e}")
+    async with httpx.AsyncClient() as client:
+        # 1. New Search Pass: If sub_team is provided, use the Search API to find the best title
+        if sub_team and sub_team != "N/A" and not is_retry:
+            try:
+                logger.info(f"Searching Wikipedia for specific sub-team: '{sub_team}' at {company}")
+                search_api_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={httpx.utils.quote(f'{company} {sub_team}')}&format=json"
+                search_res = await client.get(search_api_url, headers={"User-Agent": "HireScope/1.0"}, timeout=10)
+                if search_res.status_code == 200:
+                    results = search_res.json().get("query", {}).get("search", [])
+                    for result in results[:5]: # Try top 5 results for relevance
+                        best_title = result["title"]
+                        # Validate title: must contain company name or sub_team name to be considered
+                        if (sub_team.lower() in best_title.lower() or
+                            company.lower() in best_title.lower() or
+                            (result == results[0] and len(best_title) > 0)):
+                            if best_title.lower() != resolved_company.lower() and best_title not in search_names:
+                                logger.info(f"Found specific Wikipedia title from search: '{best_title}'")
+                                search_names.insert(0, best_title)
+                                break # Found a good one
+            except Exception as e:
+                logger.warning(f"Wikipedia sub-team search failed: {e}")
 
-    # 1b. Company Search Fallback: If direct lookups fail, try searching for the company name
-    if not is_retry:
-        try:
-            search_api_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={requests.utils.quote(resolved_company)}&format=json"
-            search_res = requests.get(search_api_url, headers={"User-Agent": "HireScope/1.0"}, timeout=10)
-            if search_res.status_code == 200:
-                results = search_res.json().get("query", {}).get("search", [])
-                if results:
-                    top_result = results[0]["title"]
-                    if top_result not in search_names:
-                        logger.info(f"Adding Wikipedia company search result: '{top_result}'")
-                        search_names.append(top_result)
-        except Exception as e:
-            logger.warning(f"Wikipedia company search failed: {e}")
+        # 1b. Company Search Fallback: If direct lookups fail, try searching for the company name
+        if not is_retry:
+            try:
+                search_api_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={httpx.utils.quote(resolved_company)}&format=json"
+                search_res = await client.get(search_api_url, headers={"User-Agent": "HireScope/1.0"}, timeout=10)
+                if search_res.status_code == 200:
+                    results = search_res.json().get("query", {}).get("search", [])
+                    if results:
+                        top_result = results[0]["title"]
+                        if top_result not in search_names:
+                            logger.info(f"Adding Wikipedia company search result: '{top_result}'")
+                            search_names.append(top_result)
+            except Exception as e:
+                logger.warning(f"Wikipedia company search failed: {e}")
 
-    for search_name in search_names:
-        try:
-            logger.info(f"Trying Wikipedia lookup for: '{search_name}'")
-            response = requests.get(
-                f"{search_url}{requests.utils.quote(search_name.replace(' ', '_'))}",
-                headers={"User-Agent": "HireScope/1.0 (educational project)"},
-                timeout=10,
-            )
+        for search_name in search_names:
+            try:
+                logger.info(f"Trying Wikipedia lookup for: '{search_name}'")
+                response = await client.get(
+                    f"{search_url}{httpx.utils.quote(search_name.replace(' ', '_'))}",
+                    headers={"User-Agent": "HireScope/1.0 (educational project)"},
+                    timeout=10,
+                )
 
-            if response.status_code == 200:
-                data = response.json()
+                if response.status_code == 200:
+                    data = response.json()
 
-                # Check for disambiguation page
-                if data.get("type") == "disambiguation" and not is_retry:
-                    logger.info(f"Hit disambiguation page for '{search_name}', retrying with ' (company)' suffix")
-                    res = fetch_wikipedia_summary(f"{search_name} (company)", sub_team=sub_team, is_retry=True)
-                    if res: return res
-                    continue # Try next candidate
+                    # Check for disambiguation page
+                    if data.get("type") == "disambiguation" and not is_retry:
+                        logger.info(f"Hit disambiguation page for '{search_name}', retrying with ' (company)' suffix")
+                        res = await fetch_wikipedia_summary(f"{search_name} (company)", sub_team=sub_team, is_retry=True)
+                        if res: return res
+                        continue # Try next candidate
 
-                raw_extract = data.get("extract", "")
+                    raw_extract = data.get("extract", "")
 
-                # If we were looking for a specific sub-team, ensure the summary actually mentions it
-                # This prevents redirects to generic parent pages (like Ayco -> Goldman Sachs) from stopping the search early
-                if sub_team and sub_team != "N/A" and sub_team.lower() not in raw_extract.lower():
-                    if search_name.lower() != resolved_company.lower():
-                        logger.info(f"Summary for '{search_name}' (redirected or direct) doesn't mention sub-team '{sub_team}', skipping.")
-                        continue
+                    # If we were looking for a specific sub-team, ensure the summary actually mentions it
+                    if sub_team and sub_team != "N/A" and sub_team.lower() not in raw_extract.lower():
+                        if search_name.lower() != resolved_company.lower():
+                            logger.info(f"Summary for '{search_name}' doesn't mention sub-team '{sub_team}', skipping.")
+                            continue
 
-                # Check for mismatched entity types (if we suspect it's not a company)
-                corporate_keywords = ["company", "corporation", "inc", "llc", "ltd", "business", "technology", "software", "bank", "financial", "firm", "enterprise", "subsidiary", "brand", "investment", "wealth", "asset", "service"]
-                if not is_retry and raw_extract and not any(kw in raw_extract.lower() for kw in corporate_keywords):
-                    logger.info(f"Summary for '{search_name}' lacks corporate keywords. Retrying with ' (company)'.")
-                    res = fetch_wikipedia_summary(f"{search_name} (company)", sub_team=sub_team, is_retry=True)
-                    if res: return res
-                    continue # Try next candidate
+                    # Check for mismatched entity types
+                    corporate_keywords = ["company", "corporation", "inc", "llc", "ltd", "business", "technology", "software", "bank", "financial", "firm", "enterprise", "subsidiary", "brand", "investment", "wealth", "asset", "service"]
+                    if not is_retry and raw_extract and not any(kw in raw_extract.lower() for kw in corporate_keywords):
+                        logger.info(f"Summary for '{search_name}' lacks corporate keywords. Retrying with ' (company)'.")
+                        res = await fetch_wikipedia_summary(f"{search_name} (company)", sub_team=sub_team, is_retry=True)
+                        if res: return res
+                        continue # Try next candidate
 
-                description = raw_extract
-
-                return {
-                    "description": description,
-                    "wikipedia_url": data.get("content_urls", {}).get("desktop", {}).get("page", ""),
-                }
-        except Exception as e:
-            logger.warning(f"Wikipedia API failed for '{search_name}': {e}")
+                    return {
+                        "description": raw_extract,
+                        "wikipedia_url": data.get("content_urls", {}).get("desktop", {}).get("page", ""),
+                    }
+            except Exception as e:
+                logger.warning(f"Wikipedia API failed for '{search_name}': {e}")
 
     return None
 
@@ -181,7 +177,7 @@ def _mock_company_intel(company: str) -> dict:
     return mock
 
 
-def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, sub_team: str = None, team_context: str = None, use_mock: bool = False, provider: str = "gemini") -> dict:
+async def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, sub_team: str = None, team_context: str = None, use_mock: bool = False, provider: str = "gemini") -> dict:
     """
     Fetch comprehensive company intelligence from Wikipedia and Gemini.
     """
@@ -191,7 +187,7 @@ def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, su
 
     intel = {
         "name": company,
-        "description": "",
+        "description": "A prominent entity in the industry.",
         "ceo": "N/A",
         "founded": "N/A",
         "headquarters": "N/A",
@@ -216,9 +212,9 @@ def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, su
 
     try:
         # Fetch individual summaries
-        main_wiki = fetch_wikipedia_summary(company)
+        main_wiki = await fetch_wikipedia_summary(company)
         if sub_team and sub_team != "N/A":
-            sub_wiki = fetch_wikipedia_summary(company, sub_team=sub_team)
+            sub_wiki = await fetch_wikipedia_summary(company, sub_team=sub_team)
 
         if main_wiki:
             intel["description"] = main_wiki.get("description", "")
@@ -265,6 +261,7 @@ Research Context - Target Sub-Team (Wikipedia):
 
 Return ONLY valid JSON with this exact structure (no markdown, no extra text):
 {{
+  "description": "<A 2-3 sentence overview of the company's main business and global significance.>",
   "ceo": "<current CEO full name, or 'N/A' if unknown>",
   "founded": "<founding year, or 'N/A'>",
   "headquarters": "<City, State/Country, or 'N/A'>",
@@ -284,7 +281,7 @@ Return ONLY valid JSON with this exact structure (no markdown, no extra text):
 }}
 Use 'N/A' for any field you are not confident about. Do NOT invent data. If a revenue breakdown or org chart cannot be reasonably estimated, provide empty arrays or empty strings."""
 
-            ai_data = llm_generate_json(prompt, provider=provider, max_tokens=900, temperature=0.0)
+            ai_data = await llm_generate_json(prompt, provider=provider, max_tokens=900, temperature=0.0)
 
             # Fetch real-time market cap using Yahoo Finance
             ticker = ai_data.get("ticker", "N/A")

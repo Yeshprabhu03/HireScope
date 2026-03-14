@@ -48,7 +48,7 @@ def parse_salary_from_text(salary_text: Optional[str]) -> Optional[dict]:
 
 
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=8))
-def estimate_market_salary_with_claude(
+async def estimate_market_salary_with_claude(
     job_title: str,
     company: str,
     location: str,
@@ -71,7 +71,7 @@ def estimate_market_salary_with_claude(
         from utils.llm import llm_generate_json
 
         context_block = f"\n\nContext - Raw Job Description Snippet:\n{jd_text_snippet}" if jd_text_snippet else ""
-        
+
         prompt = f"""You are a compensation expert. Estimate the salary range for this position.
 
 Job Title: {job_title}
@@ -90,14 +90,14 @@ Return ONLY valid JSON with this structure:
   "notes": "<brief 1-2 sentence explanation>"
 }}"""
 
-        return llm_generate_json(prompt, provider=provider, max_tokens=500, temperature=0.0)
+        return await llm_generate_json(prompt, provider=provider, max_tokens=500, temperature=0.0)
 
     except Exception as e:
         logger.error(f"Gemini salary estimation failed: {e}", exc_info=True)
         return {"min": 120000, "max": 200000, "median": 160000, "notes": "Estimate unavailable"}
 
 
-def analyze_salary(
+async def analyze_salary(
     job_title: str,
     company: str,
     location: str,
@@ -120,14 +120,14 @@ def analyze_salary(
     # NEW: Source 0: HireScope Historical Database
     try:
         from database import get_historical_salary
-        historical = get_historical_salary(company, job_title, location)
+        historical = await get_historical_salary(company, job_title, location)
         if historical:
             # We have enough proprietary observations to trust this more than H1B
             logger.info(f"[{company}] Found {historical['count']} historical salary observations for '{job_title}'")
             salary_estimates.append({
-                "source": "HireScope Historical Data", 
-                "min": historical["avg_min"], 
-                "max": historical["avg_max"], 
+                "source": "HireScope Historical Data",
+                "min": historical["avg_min"],
+                "max": historical["avg_max"],
                 "median": (historical["avg_min"] + historical["avg_max"]) // 2
             })
             sources_used.append(f"HireScope Historical Data ({historical['count']} verified postings)")
@@ -145,7 +145,7 @@ def analyze_salary(
         h1b_data = get_salary_data(df, job_title, company, location)
         h1b_count = h1b_data.get("count", 0)
         h1b_median_val = h1b_data.get("median")
-        
+
         if h1b_count > 0:
             salary_estimates.append(
                 {"source": "DOL H1B", "min": h1b_data["min"], "max": h1b_data["max"], "median": h1b_data["median"]}
@@ -166,7 +166,7 @@ def analyze_salary(
         sources_used.append("JD Mention")
 
     # Source 3: Claude market estimate
-    market = estimate_market_salary_with_claude(
+    market = await estimate_market_salary_with_claude(
         job_title, company, location, seniority_level, required_skills, jd_text_snippet=jd_text_snippet, use_mock=use_mock, provider=provider
     )
     salary_estimates.append(
@@ -197,7 +197,7 @@ def analyze_salary(
 
     # Handle IB-specific bonuses which are radically different from Tech RSUs
     is_ib = bool("investment banking" in job_title.lower() or "m&a" in job_title.lower() or "private equity" in job_title.lower())
-    
+
     if is_ib:
         if "vice president" in seniority_level.lower() or "vp" in seniority_level.lower():
             agg_min, agg_max, agg_median = 250000, 350000, 300000
@@ -207,7 +207,7 @@ def analyze_salary(
             agg_min, agg_max, agg_median = 400000, 600000, 500000
         else: # analyst
             agg_min, agg_max, agg_median = 100000, 150000, 125000
-            
+
         bonus_low = int(agg_min * 0.50)
         bonus_high = int(agg_median * 1.50)
         # IB rarely has heavy standard RSUs below MD level compared to base/bonus
@@ -219,7 +219,7 @@ def analyze_salary(
         bonus_high = int(agg_median * 0.20)
         equity_low = int(agg_min * 0.10)
         equity_high = int(agg_median * 0.25)
-        
+
     total_low = agg_min + bonus_low + equity_low
     total_high = agg_max + bonus_high + equity_high
 
