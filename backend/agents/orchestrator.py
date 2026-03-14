@@ -7,30 +7,41 @@ from typing import TypedDict, Optional, List, Annotated
 import operator
 
 from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import ToolNode
+import enum
 
 logger = logging.getLogger(__name__)
 
 
-class JobAnalysisState(TypedDict):
-    # Core state
+class HireScopeState(TypedDict):
+    """Explicitly typed state for the HireScope analysis pipeline."""
+    # Core job identification
     job_id: str
     job_url: str
+
+    # Content and analysis
     html_content: str
     text_content: str
-    parsed_jd: Optional[dict]
+    parsed_jd: Optional[Dict[str, Any]]
     sub_team: Optional[str]
     extracted_team_context: Optional[str]
-    company_intelligence: Optional[dict]
-    salary_intelligence: Optional[dict]
-    interview_intelligence: Optional[dict]
+
+    # Intelligence results
+    company_intelligence: Optional[Dict[str, Any]]
+    salary_intelligence: Optional[Dict[str, Any]]
+    interview_intelligence: Optional[Dict[str, Any]]
+
+    # Final output and status
     html_report: str
     status: str
     error: str
+
+    # Configuration
     use_mock: bool
     provider: str
     model_display_name: str
-    
-    # Control flags
+
+    # Execution control
     browser_retried: bool
 
 
@@ -38,7 +49,7 @@ class JobAnalysisState(TypedDict):
 # Node functions
 # ---------------------------------------------------------------------------
 
-def fetch_html_node(state: JobAnalysisState) -> dict:
+def fetch_html_node(state: HireScopeState) -> dict:
     """Fetch HTML from the job URL, utilizing the local cache if available and fresh."""
     logger.info(f"[{state['job_id']}] Fetching HTML from {state['job_url']}")
     from utils.job_fetcher import get_job_content
@@ -70,7 +81,7 @@ def fetch_html_node(state: JobAnalysisState) -> dict:
     return {"html_content": html, "text_content": text, "status": "fetched"}
 
 
-def parse_jd_node(state: JobAnalysisState) -> dict:
+def parse_jd_node(state: HireScopeState) -> dict:
     """Parse job description."""
     if state.get("parsed_jd") and state.get("status") == "parsed":
         logger.info(f"[{state['job_id']}] Skipping JD parsing (loaded from cache)")
@@ -92,8 +103,8 @@ def parse_jd_node(state: JobAnalysisState) -> dict:
             return {"parsed_jd": parsed_dict, "status": "failed", "error": error_msg}
 
         return {
-            "parsed_jd": parsed_dict, 
-            "sub_team": parsed_dict.get("sub_team"), 
+            "parsed_jd": parsed_dict,
+            "sub_team": parsed_dict.get("sub_team"),
             "extracted_team_context": parsed_dict.get("extracted_team_context"),
             "status": "parsed"
         }
@@ -106,16 +117,16 @@ def parse_jd_node(state: JobAnalysisState) -> dict:
         }
 
 
-def browser_retry_node(state: JobAnalysisState) -> dict:
+def browser_retry_node(state: HireScopeState) -> dict:
     """Auto-Fixing Agent: retry fetching with a real browser."""
     logger.warning(f"[{state['job_id']}] Triggering Auto-Fixing Agent with Browser...")
     import subprocess
     import os
     import sys
-    
+
     base_dir = os.path.dirname(os.path.abspath(__file__))
     script_path = os.path.normpath(os.path.join(base_dir, "..", "utils", "browser_fetch.py"))
-    
+
     try:
         # Increased timeout to 45s for complex SPAs
         result = subprocess.run([sys.executable, script_path, state["job_url"]], capture_output=True, text=True, timeout=45)
@@ -134,13 +145,13 @@ def browser_retry_node(state: JobAnalysisState) -> dict:
         return {"browser_retried": True}
 
 
-def fetch_company_node(state: JobAnalysisState) -> dict:
+def fetch_company_node(state: HireScopeState) -> dict:
     """Fetch company intelligence."""
     jd = state.get("parsed_jd") or {}
     company = jd.get("company", "Unknown")
     job_title = jd.get("job_title", "Unknown Role")
     logger.info(f"[{state['job_id']}] Fetching company intel for '{company}' regarding '{job_title}'")
-    
+
     try:
         from data_sources.company_intel import fetch_company_intel
         from database import get_company_snapshot, save_company_snapshot
@@ -160,27 +171,27 @@ def fetch_company_node(state: JobAnalysisState) -> dict:
         provider = state.get("provider", "gemini")
         sub_team = state.get("sub_team")
         team_seed = state.get("extracted_team_context")
-        
+
         intel = fetch_company_intel(
-            company, 
-            role=job_title, 
-            parsed_jd=jd, 
-            sub_team=sub_team, 
+            company,
+            role=job_title,
+            parsed_jd=jd,
+            sub_team=sub_team,
             team_context=team_seed,
-            use_mock=use_mock, 
+            use_mock=use_mock,
             provider=provider
         )
-        
+
         if company != "Unknown" and intel and not intel.get("error"):
             save_company_snapshot(cache_key, intel)
-            
+
         return {"company_intelligence": intel}
     except Exception as e:
         logger.error(f"fetch_company_node failed: {e}", exc_info=True)
         return {"company_intelligence": {"name": company, "error": str(e)}}
 
 
-def fetch_salary_node(state: JobAnalysisState) -> dict:
+def fetch_salary_node(state: HireScopeState) -> dict:
     """Analyze salary data."""
     jd = state.get("parsed_jd") or {}
     logger.info(f"[{state['job_id']}] Analyzing salary for '{jd.get('job_title')}' at '{jd.get('company')}'")
@@ -205,7 +216,7 @@ def fetch_salary_node(state: JobAnalysisState) -> dict:
         return {"salary_intelligence": {"error": str(e), "estimated_range": "N/A"}}
 
 
-def fetch_interviews_node(state: JobAnalysisState) -> dict:
+def fetch_interviews_node(state: HireScopeState) -> dict:
     """Fetch interview intelligence."""
     jd = state.get("parsed_jd") or {}
     company_intel = state.get("company_intelligence") or {}
@@ -218,13 +229,13 @@ def fetch_interviews_node(state: JobAnalysisState) -> dict:
         use_mock = state.get("use_mock", False)
         provider = state.get("provider", "gemini")
         intel = analyze_interviews(
-            job_title=role, 
-            company=company, 
-            industry=industry, 
+            job_title=role,
+            company=company,
+            industry=industry,
             parsed_jd=jd,
             company_intel=company_intel,
             jd_text_snippet=jd.get("jd_text_snippet"),
-            use_mock=use_mock, 
+            use_mock=use_mock,
             provider=provider
         )
         return {"interview_intelligence": intel}
@@ -233,7 +244,7 @@ def fetch_interviews_node(state: JobAnalysisState) -> dict:
         return {"interview_intelligence": {"error": str(e), "questions": []}}
 
 
-def generate_report_node(state: JobAnalysisState) -> dict:
+def generate_report_node(state: HireScopeState) -> dict:
     """Generate final report."""
     logger.info(f"[{state['job_id']}] Generating HTML report")
     try:
@@ -256,20 +267,20 @@ def generate_report_node(state: JobAnalysisState) -> dict:
 # Router
 # ---------------------------------------------------------------------------
 
-def router(state: JobAnalysisState):
+def router(state: HireScopeState):
     """Router for conditional edges."""
     status = state.get("status")
     if status == "failed":
         return END
-        
+
     # Check if we need retry
     parsed_jd = state.get("parsed_jd") or {}
     if (parsed_jd.get("company") == "Unknown" or parsed_jd.get("job_title") == "Unknown") and not state.get("browser_retried"):
         return "browser_retry"
-        
+
     if status == "parsed":
         return "fetch_company"
-        
+
     return END
 
 
@@ -277,15 +288,21 @@ def router(state: JobAnalysisState):
 # Graph Construction
 # ---------------------------------------------------------------------------
 
-workflow = StateGraph(JobAnalysisState)
+workflow = StateGraph(HireScopeState)
 
-workflow.add_node("fetch_html", fetch_html_node)
-workflow.add_node("parse_jd", parse_jd_node)
-workflow.add_node("browser_retry", browser_retry_node)
-workflow.add_node("fetch_company", fetch_company_node)
-workflow.add_node("fetch_salary", fetch_salary_node)
-workflow.add_node("fetch_interviews", fetch_interviews_node)
-workflow.add_node("generate_report", generate_report_node)
+# Define basic retry policy for flaky external calls (3 attempts, exponential backoff)
+retry_policy = {
+    "stop_after_attempt": 3,
+    "wait_exponential": {"multiplier": 2, "min": 4, "max": 10},
+}
+
+workflow.add_node("fetch_html", fetch_html_node, retry=retry_policy)
+workflow.add_node("parse_jd", parse_jd_node, retry=retry_policy)
+workflow.add_node("browser_retry", browser_retry_node, retry=retry_policy)
+workflow.add_node("fetch_company", fetch_company_node, retry=retry_policy)
+workflow.add_node("fetch_salary", fetch_salary_node, retry=retry_policy)
+workflow.add_node("fetch_interviews", fetch_interviews_node, retry=retry_policy)
+workflow.add_node("generate_report", generate_report_node, retry=retry_policy)
 
 workflow.set_entry_point("fetch_html")
 
@@ -341,7 +358,7 @@ def _update_progress_live(jobs: dict, job_id: str, node_name: str, completed: li
 
 async def run_job_analysis(job_id: str, job_url: str, provider: str = "gemini", jobs: dict = None) -> dict:
     from config import settings
-    
+
     def get_display_name(p):
         return {"gemini": "Gemini 2.0 Flash", "anthropic": "Claude 3.5 Sonnet", "openai": "GPT-4o"}.get(p, "AI Assistant")
 
@@ -368,7 +385,7 @@ async def run_job_analysis(job_id: str, job_url: str, provider: str = "gemini", 
     final_state = initial_state
     completed = []
     total = len(PIPELINE_STEPS_LABELS)
-    
+
     PIPELINE_TIMEOUT_SECONDS = 120 # Increased for LangGraph and potential retries
 
     try:
@@ -379,10 +396,10 @@ async def run_job_analysis(job_id: str, job_url: str, provider: str = "gemini", 
                 if node_name in PIPELINE_STEPS_LABELS:
                     completed.append(node_name)
                     _update_progress_live(jobs, job_id, node_name, completed, total)
-                    
+
                 if final_state.get("status") == "failed":
                     break
-        
+
         # After completion, save to cache
         if final_state.get("status") == "completed" and final_state.get("parsed_jd"):
             try:

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { API_HEADERS } from '../api_config'
 
 interface Progress {
   current_step: string
@@ -146,9 +147,7 @@ export default function Dashboard({ highlightJobId, onViewReport, onAnalyzeNew }
   const fetchJobs = useCallback(async () => {
     try {
       const res = await fetch('/api/jobs', {
-        headers: {
-          'X-Pinggy-No-Screen': 'true'
-        }
+        headers: API_HEADERS
       })
       if (res.ok) {
         const data: Job[] = await res.json()
@@ -323,4 +322,3 @@ export default function Dashboard({ highlightJobId, onViewReport, onAnalyzeNew }
     </div>
   )
 }
-

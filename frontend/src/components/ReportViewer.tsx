@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { API_HEADERS } from '../api_config'
 
 interface ReportData {
   job_id: string
@@ -24,9 +25,7 @@ export default function ReportViewer({ jobId, onBack }: Props) {
     const fetchReport = async () => {
       try {
         const res = await fetch(`/api/jobs/${jobId}/report`, {
-          headers: {
-            'X-Pinggy-No-Screen': 'true'
-          }
+          headers: API_HEADERS
         })
         if (!res.ok) {
           const data = await res.json()
@@ -74,11 +73,11 @@ export default function ReportViewer({ jobId, onBack }: Props) {
     if (iframeRef.current?.contentWindow) {
       const jd = report?.parsed_jd as any;
       const title = `${jd?.company || 'Company'} - ${jd?.job_title || 'Position'}`;
-      
+
       // Force change the title in both documents
       document.title = title;
       iframeRef.current.contentWindow.document.title = title;
-      
+
       // Even try to update any existing title tag in the head
       const titleTag = iframeRef.current.contentWindow.document.getElementsByTagName('title')[0];
       if (titleTag) {
@@ -150,7 +149,7 @@ export default function ReportViewer({ jobId, onBack }: Props) {
           >
             📄 HTML
           </button>
-          
+
           <button
             onClick={() => {
               alert("Tip: In the next window, set the 'Destination' to 'Save as PDF' to download this report.");

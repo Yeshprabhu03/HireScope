@@ -7,21 +7,25 @@ import logging
 import time
 from typing import Literal
 
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
 logger = logging.getLogger(__name__)
 
 Provider = Literal["gemini", "anthropic", "openai"]
 
-# Simple retry with exponential backoff for rate limits
-MAX_RETRIES = 5
-BASE_DELAY = 4  # seconds
 
-
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=2, min=4, max=60),
+    reraise=True,
+    # Optional: we can be specific about which exceptions to retry on if we want,
+    # but retrying on all general exceptions is safe for LLM calls.
+)
 def llm_generate(prompt: str, provider: Provider = "gemini", max_tokens: int = 2000, temperature: float = 0.0) -> str:
     """
     Send a prompt to the selected LLM provider and return the raw text response.
+    Retries automatically on failures (e.g. rate limits, 500s) with exponential backoff.
     """
-    from config import settings
-
     if provider == "gemini":
         return _generate_gemini(prompt, max_tokens, temperature)
     elif provider == "anthropic":
@@ -43,27 +47,16 @@ def _generate_gemini(prompt: str, max_tokens: int, temperature: float) -> str:
         temperature=temperature,
     )
 
-    last_error = None
-    for attempt in range(MAX_RETRIES):
-        try:
-            response = model.generate_content(prompt, generation_config=generation_config)
-            return response.text.strip()
-        except Exception as e:
-            last_error = e
-            error_str = str(e)
-            if "429" in error_str or "Resource exhausted" in error_str or "500" in error_str:
-                delay = BASE_DELAY * (2 ** attempt)
-                logger.warning(f"Gemini rate limited (attempt {attempt + 1}/{MAX_RETRIES}), retrying in {delay}s...")
-                time.sleep(delay)
-            else:
-                raise
-    raise last_error
+    response = model.generate_content(prompt, generation_config=generation_config)
+    if not response or not response.text:
+        raise ValueError("Gemini returned empty response")
+    return response.text.strip()
 
 
 def _generate_anthropic(prompt: str, max_tokens: int, temperature: float) -> str:
     from anthropic import Anthropic
     from config import settings
-    
+
     if settings.ANTHROPIC_API_KEY == "placeholder":
         raise ValueError("Anthropic API key not configured")
 
@@ -113,9 +106,9 @@ def llm_generate_json(prompt: str, provider: Provider = "gemini", max_tokens: in
             if processed.startswith("json"):
                 processed = processed[4:]
             processed = processed.strip()
-    
+
     # Final cleanup: ensure it starts/ends with braces
-    # We try to find the first '{' and then find the corresponding matching '}' 
+    # We try to find the first '{' and then find the corresponding matching '}'
     # to handle cases where there is extra text AFTER the JSON.
     first_brace = processed.find("{")
     if first_brace != -1:
@@ -151,7 +144,7 @@ def llm_generate_json(prompt: str, provider: Provider = "gemini", max_tokens: in
                  return json.loads(processed[:e.pos])
              except:
                  pass
-        
+
         # Another common case: raw newlines in strings
         try:
             # This is a bit aggressive but can help with multiline text that was not escaped
@@ -163,5 +156,5 @@ def llm_generate_json(prompt: str, provider: Provider = "gemini", max_tokens: in
             return json.loads(joined)
         except:
             pass
-            
+
         raise

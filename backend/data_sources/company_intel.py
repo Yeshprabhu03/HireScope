@@ -4,6 +4,7 @@ Company Intelligence: fetches company data from Wikipedia API and public sources
 import logging
 import requests
 from typing import Optional
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -51,14 +52,15 @@ def resolve_company_name(company_input: str) -> str:
     }
     return aliases.get(company_input.upper().strip(), company_input.strip())
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), reraise=False)
 def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, is_retry: bool = False) -> Optional[dict]:
     """Fetch company summary from Wikipedia API."""
     # Resolve any known abbreviation first
     resolved_company = resolve_company_name(company)
-    
+
     # Build a list of name variations to try
     suffixes_to_strip = [" Inc.", " LLC", " Corp.", " Corporation", " Holdings", " Group", " Ltd.", " Limited", ", Inc.", ", LLC"]
-    
+
     search_names = []
     # If sub_team is provided, try that first as a specific entity
     if "(company)" not in company and "(company)" not in (sub_team or ""):
@@ -66,10 +68,10 @@ def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, is_ret
             search_names.append(sub_team)
             search_names.append(f"{sub_team} (company)")
             search_names.append(f"{resolved_company} {sub_team}")
-    
+
     # Original name and variations
     search_names.append(resolved_company)
-    
+
     # Progressively strip suffixes iteratively
     suffixes_to_strip = [" Inc.", " LLC", " Corp.", " Corporation", " Holdings", " Group", " Ltd.", " Limited", ", Inc.", ", LLC", ", Holdings"]
     name = resolved_company
@@ -86,7 +88,7 @@ def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, is_ret
         search_names.append(name)
 
     search_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
-    
+
     # 1. New Search Pass: If sub_team is provided, use the Search API to find the best title
     if sub_team and sub_team != "N/A" and not is_retry:
         try:
@@ -99,7 +101,7 @@ def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, is_ret
                     best_title = result["title"]
                     # Validate title: must contain company name or sub_team name to be considered
                     # OR be the #1 result if the search was for the company + sub_team
-                    if (sub_team.lower() in best_title.lower() or 
+                    if (sub_team.lower() in best_title.lower() or
                         company.lower() in best_title.lower() or
                         (result == results[0] and len(best_title) > 0)):
                         if best_title.lower() != resolved_company.lower() and best_title not in search_names:
@@ -135,16 +137,16 @@ def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, is_ret
 
             if response.status_code == 200:
                 data = response.json()
-                
+
                 # Check for disambiguation page
                 if data.get("type") == "disambiguation" and not is_retry:
                     logger.info(f"Hit disambiguation page for '{search_name}', retrying with ' (company)' suffix")
                     res = fetch_wikipedia_summary(f"{search_name} (company)", sub_team=sub_team, is_retry=True)
                     if res: return res
                     continue # Try next candidate
-                
+
                 raw_extract = data.get("extract", "")
-                
+
                 # If we were looking for a specific sub-team, ensure the summary actually mentions it
                 # This prevents redirects to generic parent pages (like Ayco -> Goldman Sachs) from stopping the search early
                 if sub_team and sub_team != "N/A" and sub_team.lower() not in raw_extract.lower():
@@ -159,16 +161,16 @@ def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, is_ret
                     res = fetch_wikipedia_summary(f"{search_name} (company)", sub_team=sub_team, is_retry=True)
                     if res: return res
                     continue # Try next candidate
-                
+
                 description = raw_extract
-                
+
                 return {
                     "description": description,
                     "wikipedia_url": data.get("content_urls", {}).get("desktop", {}).get("page", ""),
                 }
         except Exception as e:
             logger.warning(f"Wikipedia API failed for '{search_name}': {e}")
-    
+
     return None
 
 
@@ -206,24 +208,24 @@ def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, su
         "glassdoor_rating": None,
         "source": "Wikipedia API",
     }
-    
+
     # 1. Base info via Wikipedia
     # We now fetch TWO summaries if a sub-team is present to avoid one overwriting the other
     main_wiki = None
     sub_wiki = None
-    
+
     try:
         # Fetch individual summaries
         main_wiki = fetch_wikipedia_summary(company)
         if sub_team and sub_team != "N/A":
             sub_wiki = fetch_wikipedia_summary(company, sub_team=sub_team)
-            
+
         if main_wiki:
             intel["description"] = main_wiki.get("description", "")
             intel["wikipedia_url"] = main_wiki.get("wikipedia_url", "")
             intel["source"] = "Wikipedia API"
             logger.info(f"Fetched parent Wikipedia summary for '{company}'")
-        
+
         if sub_wiki:
             # We don't overwrite the main description, but we log success
             logger.info(f"Fetched sub-team Wikipedia summary for '{sub_team}'")
@@ -244,10 +246,10 @@ def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, su
         team_context = f" and specific team/brand '{sub_team}'" if sub_team else ""
         bu_context = f" The candidate is applying to the '{bu}' business unit{team_context}. " if bu and bu != 'N/A' else ""
         jd_context = f"\n\nContext - Job Description: {parsed_jd}" if parsed_jd else ""
-        
+
         if settings.GEMINI_API_KEY != "placeholder":
             prompt = f"""Provide company intelligence for "{company}", specifically focusing on the "{sub_team or bu}" group.
-            
+
 Target Team/Group: {sub_team or 'N/A'}
 Team Business Unit: {bu}
 Job Role: {role}
@@ -283,15 +285,19 @@ Return ONLY valid JSON with this exact structure (no markdown, no extra text):
 Use 'N/A' for any field you are not confident about. Do NOT invent data. If a revenue breakdown or org chart cannot be reasonably estimated, provide empty arrays or empty strings."""
 
             ai_data = llm_generate_json(prompt, provider=provider, max_tokens=900, temperature=0.0)
-            
+
             # Fetch real-time market cap using Yahoo Finance
             ticker = ai_data.get("ticker", "N/A")
             market_cap_str = "Not Listed / Private" if not ticker or ticker.upper() == "N/A" else "N/A"
             if ticker and ticker.upper() != "N/A":
                 try:
                     import yfinance as yf
-                    stock = yf.Ticker(ticker)
-                    mcap = stock.info.get("marketCap")
+                    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5), reraise=True)
+                    def _fetch_mcap(t):
+                        stock = yf.Ticker(t)
+                        return stock.info.get("marketCap")
+
+                    mcap = _fetch_mcap(ticker)
                     if mcap:
                         if mcap >= 1e12:
                             market_cap_str = f"${mcap / 1e12:.2f}T"
@@ -302,7 +308,7 @@ Use 'N/A' for any field you are not confident about. Do NOT invent data. If a re
                         intel["source"] = "Wikipedia, Gemini, Yahoo Finance"
                 except Exception as e:
                     logger.warning(f"yfinance failed to fetch market cap for {ticker}: {e}")
-            
+
             ai_data["market_cap"] = market_cap_str
             intel.update(ai_data)
             logger.info(f"Enhanced company intel for '{company}' with Gemini")

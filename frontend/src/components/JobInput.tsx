@@ -1,4 +1,5 @@
 import { useState, FormEvent } from 'react'
+import { API_HEADERS } from '../api_config'
 
 interface Props {
   onJobSubmitted: (jobId: string) => void
@@ -23,10 +24,7 @@ export default function JobInput({ onJobSubmitted }: Props) {
     try {
       const res = await fetch('/api/analyze', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-Pinggy-No-Screen': 'true'
-        },
+        headers: API_HEADERS,
         body: JSON.stringify({
           job_url: url.trim(),
           provider: selectedModel

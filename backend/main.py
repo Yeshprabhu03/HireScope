@@ -1,7 +1,8 @@
 import uuid
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Security, Depends
+from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 from typing import Optional, Dict, Any
@@ -11,6 +12,17 @@ from config import settings
 
 logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL))
 logger = logging.getLogger(__name__)
+
+# Security
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
+
+async def get_api_key(api_key: str = Security(api_key_header)):
+    if api_key != settings.HIRESCOPE_API_KEY:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid or missing API Key",
+        )
+    return api_key
 
 # In-memory job store (replace with DB in production)
 jobs: Dict[str, Dict[str, Any]] = {}
@@ -28,6 +40,7 @@ app = FastAPI(
     description="AI-powered job intelligence platform",
     version="1.0.0",
     lifespan=lifespan,
+    dependencies=[Depends(get_api_key)]
 )
 
 app.add_middleware(
@@ -163,7 +176,7 @@ async def submit_feedback(job_id: str, request: FeedbackRequest):
     """Submit thumbs-up or thumbs-down feedback for a generated report section."""
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
-        
+
     try:
         from database import save_user_feedback
         save_user_feedback(
