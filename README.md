@@ -86,13 +86,20 @@ DOL_H1B_DATA_PATH=../data/h1b_data.csv
 GLASSDOOR_CACHE_DIR=../data/interview_corpus
 ALLOWED_ORIGINS=http://localhost:5173
 USE_MOCK_DATA=false
+
+# Security
+HIRESCOPE_API_KEY=hirescope_dev_secret
 ```
 
 ### 3. Backend Setup
+> [!IMPORTANT]
+> All API requests now require the `X-API-Key` header for security.
 
 ```bash
 cd backend
 pip install -r requirements.txt
+# Install pre-commit hooks for secret detection
+pre-commit install
 uvicorn main:app --reload --port 8000
 ```
 
@@ -146,14 +153,14 @@ The orchestrator runs 6 sequential steps with real-time progress tracking:
 
 ## 🛠️ Tech Stack
 
-**Backend:** Python, FastAPI, LangGraph, ChromaDB, Pydantic, `yfinance`  
-**Frontend:** React, TypeScript, Vite, Tiptap, Recharts  
-**AI:** Google Gemini 2.0 Flash  
+**Backend:** Python, FastAPI, LangGraph, ChromaDB, Pydantic, `yfinance`
+**Frontend:** React, TypeScript, Vite, Tiptap, Recharts
+**AI:** Google Gemini 2.0 Flash
 **Data:** DOL H1B disclosures, Wikipedia API, RAG, Web Scrape
 
 ## 📝 License
 
-**Proprietary and Confidential.**  
+**Proprietary and Confidential.**
 All rights reserved. Unauthorized copying, modification, distribution, or use of this repository, via any medium, is strictly prohibited without explicit written permission.
 
 ---
