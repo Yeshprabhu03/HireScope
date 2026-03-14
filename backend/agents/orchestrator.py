@@ -3,11 +3,10 @@ Job Analysis Orchestrator: runs the analysis pipeline as an Agentic State Machin
 """
 import asyncio
 import logging
-from typing import TypedDict, Optional, List, Annotated
+from typing import TypedDict, Optional, List, Annotated, Dict, Any
 import operator
 
 from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolNode
 import enum
 
 logger = logging.getLogger(__name__)
@@ -290,19 +289,16 @@ def router(state: HireScopeState):
 
 workflow = StateGraph(HireScopeState)
 
-# Define basic retry policy for flaky external calls (3 attempts, exponential backoff)
-retry_policy = {
-    "stop_after_attempt": 3,
-    "wait_exponential": {"multiplier": 2, "min": 4, "max": 10},
-}
+# Define the workflow
+workflow = StateGraph(HireScopeState)
 
-workflow.add_node("fetch_html", fetch_html_node, retry=retry_policy)
-workflow.add_node("parse_jd", parse_jd_node, retry=retry_policy)
-workflow.add_node("browser_retry", browser_retry_node, retry=retry_policy)
-workflow.add_node("fetch_company", fetch_company_node, retry=retry_policy)
-workflow.add_node("fetch_salary", fetch_salary_node, retry=retry_policy)
-workflow.add_node("fetch_interviews", fetch_interviews_node, retry=retry_policy)
-workflow.add_node("generate_report", generate_report_node, retry=retry_policy)
+workflow.add_node("fetch_html", fetch_html_node)
+workflow.add_node("parse_jd", parse_jd_node)
+workflow.add_node("browser_retry", browser_retry_node)
+workflow.add_node("fetch_company", fetch_company_node)
+workflow.add_node("fetch_salary", fetch_salary_node)
+workflow.add_node("fetch_interviews", fetch_interviews_node)
+workflow.add_node("generate_report", generate_report_node)
 
 workflow.set_entry_point("fetch_html")
 

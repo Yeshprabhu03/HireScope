@@ -1,4 +1,5 @@
 import os
+import logging
 import jinja2
 from datetime import datetime
 

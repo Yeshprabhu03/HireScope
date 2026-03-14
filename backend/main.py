@@ -14,10 +14,20 @@ logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL))
 logger = logging.getLogger(__name__)
 
 # Security
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
-async def get_api_key(api_key: str = Security(api_key_header)):
+from fastapi import Request
+
+async def get_api_key(request: Request, api_key: str = Security(api_key_header)):
+    # logger.debug(f"Headers: {dict(request.headers)}")
+
+    if not api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+        )
     if api_key != settings.HIRESCOPE_API_KEY:
+        logger.warning(f"Invalid API Key attempt: {api_key}")
         raise HTTPException(
             status_code=403,
             detail="Invalid or missing API Key",
@@ -80,9 +90,10 @@ async def run_analysis(job_id: str, job_url: str, provider: str = "gemini"):
 
         result = await run_job_analysis(job_id=job_id, job_url=job_url, provider=provider, jobs=jobs)
 
+        result_status = result.get("status", "completed")
         jobs[job_id].update(
             {
-                "status": "completed",
+                "status": result_status,
                 "parsed_jd": result.get("parsed_jd"),
                 "company_intelligence": result.get("company_intelligence"),
                 "salary_intelligence": result.get("salary_intelligence"),
