@@ -43,38 +43,13 @@ MOCK_INTERVIEW_INTEL = {
 
 async def scrape_on_demand_interviews(company: str, role: str, role_category: str) -> list[str]:
     """
-    Placeholder: Simulate live web scraping of Glassdoor/WSO to fetch experiences.
-    Now uses the LLM to generate highly distinctive mock data to prove the dynamically
-    injected vectors are unique to each company.
+    [DISABLED - Tier 3 fix] Previously generated hallucinated interview experiences and injected
+    them into ChromaDB, which polluted all future RAG queries for that company with fake data.
+    Now returns empty so the LLM falls back to honest JD-based synthesis.
+    Replace this with a real async web scraper (Playwright + Glassdoor) when ready.
     """
-    logger.info(f"Simulating live scrape for {company} {role} ({role_category})...")
-
-    try:
-        from utils.llm import llm_generate
-        prompt = f"""Generate exactly 4 highly distinct paragraph-length mock interview experiences for a '{role}' at '{company}' (Category: {role_category}).
-They should sound like candidates posting on Blind or Glassdoor.
-CRITICAL: You MUST explicitly mention {company}'s specific products, known cultural quirks, and technologies to prove this data belongs uniquely to {company}.
-Format your output as EXACTLY 4 paragraphs separated by double newlines.
-Start each paragraph with: "[Source: Simulated Scraper - Blind] "
-Do not output anything else."""
-
-        response = await llm_generate(prompt, provider="gemini", temperature=0.7)
-        if response:
-            chunks = [chunk.strip() for chunk in response.split("\n\n") if chunk.strip()]
-            if len(chunks) >= 2:
-                return chunks[:4]
-    except Exception as e:
-        logger.warning(f"Simulated dynamic scraper failed to LLM generate: {e}")
-
-    # Fallback to the hardcoded generic ones if LLM fails or is unavailable
-    simulated_data = [
-        f"[Source: Simulated Scraper] Interviewed for {role} at {company}. The process started with a recruiter screen where they asked about my motivations and past projects.",
-        f"[Source: Simulated Scraper] Technical round for {company} focused heavily on scenario-based questions related to {role_category} challenges.",
-        f"[Source: Simulated Scraper] Behavioral round was very standard. They asked 'Tell me about a time you failed' and 'How do you handle conflict in {role} scenarios?'.",
-        f"[Source: Simulated Scraper] The final round was a presentation/whiteboard session where I had to solve a problem relevant to {company}'s core business."
-    ]
-
-    return simulated_data
+    logger.info(f"On-demand scraper disabled for data integrity — skipping injection for {company}/{role}")
+    return []
 
 def categorize_role(job_title: str) -> str:
     """Map job titles to strict role categories for targeted retrieval."""
@@ -199,54 +174,11 @@ async def analyze_interviews(
         verified_docs = [d for d in all_unique_data if is_verified_record(d)]
         verified_count = len(set([d["text"] for d in verified_docs]))
 
-        # --- PHASE 3: ON DEMAND SCRAPING FALLBACK ---
-        if verified_count < 3 and company.lower() not in ["none", "unknown", "n/a"]:
-            logger.info(f"Only {verified_count} verified records found for {company} {role}. Triggering On-Demand Scraper...")
-
-            # 1. Scrape new experiences (Simulated for now until residential proxies)
-            new_experiences = await scrape_on_demand_interviews(company, role, role_category)
-
-            if new_experiences:
-                try:
-                    from database import save_interview_experiences
-                    from rag.vector_store import index_interviews
-
-                    # 2. Save to SQLite Database
-                    await save_interview_experiences(company, role, role_category, new_experiences)
-
-                    # 3. Inject directly into ChromaDB memory
-                    index_interviews(new_experiences, company, role, role_category)
-
-                    logger.info("On-Demand injection complete. Re-querying RAG...")
-
-                    # 4. Re-query RAG to grab the newly injected chunks
-                    tech_results = await retrieve_relevant_experiences(
-                        query=f"{role} technical interview questions",
-                        company=company, role=role, role_category=role_category,
-                        industry=industry, limit=5,
-                    )
-                    behavioral_results = await retrieve_relevant_experiences(
-                        query=f"{role} behavioral interview questions",
-                        company=company, role=role, role_category=role_category,
-                        industry=industry, limit=3,
-                    )
-                    process_results = await retrieve_relevant_experiences(
-                        query=f"{role} interview process rounds",
-                        company=company, role=role, role_category=role_category,
-                        industry=industry, limit=3,
-                    )
-
-                    # Re-calculate
-                    tech_data = get_doc_data(tech_results)
-                    behavioral_data = get_doc_data(behavioral_results)
-                    process_data = get_doc_data(process_results)
-                    all_unique_data = tech_data + behavioral_data + process_data
-
-                    verified_docs = [d for d in all_unique_data if is_verified_record(d)]
-                    verified_count = len(set([d["text"] for d in verified_docs]))
-
-                except Exception as e:
-                    logger.error(f"Failed to index on-demand scrape: {e}")
+        # --- PHASE 3: ON DEMAND SCRAPING (DISABLED — see scrape_on_demand_interviews) ---
+        # Fake hallucinated injection was a data integrity risk. Skip mid-flight injection.
+        # Real scraping can run as a post-analysis BackgroundTask when implemented.
+        if verified_count < 3:
+            logger.info(f"Only {verified_count} verified records for {company}/{role}. LLM will synthesize from JD context.")
         # --- END PHASE 3 ---
 
         sources_found = []

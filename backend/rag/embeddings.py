@@ -4,27 +4,35 @@ Embedding utilities using OpenAI text-embedding-3-small.
 import logging
 from typing import List
 import httpx
-from openai import OpenAI
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+# Singleton client — created once at module load, reused across all embedding calls
+_http_client: httpx.AsyncClient = None
+_openai_client = None
+
+def _get_openai_client():
+    global _http_client, _openai_client
+    if _openai_client is None:
+        from openai import AsyncOpenAI
+        _http_client = httpx.AsyncClient()
+        _openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, http_client=_http_client)
+    return _openai_client
 
 
 async def get_embedding(text: str, use_mock: bool = False) -> List[float]:
     """Get embedding vector for a text string."""
     if use_mock:
-        # Return a deterministic mock embedding (384-dim zeros with hash-based variation)
         import hashlib
         h = int(hashlib.md5(text.encode()).hexdigest(), 16)
         return [(((h >> i) & 0xFF) / 255.0 - 0.5) for i in range(384)]
 
     try:
-        from openai import AsyncOpenAI
-        http_client = httpx.AsyncClient()
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, http_client=http_client)
+        client = _get_openai_client()
         response = await client.embeddings.create(
             model="text-embedding-3-small",
-            input=text[:8000],  # Token limit safety
+            input=text[:8000],
         )
         return response.data[0].embedding
     except Exception as e:
@@ -35,14 +43,10 @@ async def get_embedding(text: str, use_mock: bool = False) -> List[float]:
 async def get_embeddings_batch(texts: List[str], use_mock: bool = False) -> List[List[float]]:
     """Get embeddings for a batch of texts."""
     if use_mock:
-        # Mock behavior remains same but needs to be async if it calls get_embedding
         return [await get_embedding(t, use_mock=True) for t in texts]
 
     try:
-        from openai import AsyncOpenAI
-        http_client = httpx.AsyncClient()
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, http_client=http_client)
-        # Process in batches of 100
+        client = _get_openai_client()
         all_embeddings = []
         for i in range(0, len(texts), 100):
             batch = texts[i : i + 100]

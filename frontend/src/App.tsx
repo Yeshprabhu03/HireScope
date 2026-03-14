@@ -2,6 +2,7 @@ import { useState } from 'react'
 import JobInput from './components/JobInput'
 import Dashboard from './components/Dashboard'
 import ReportViewer from './components/ReportViewer'
+import { motion, AnimatePresence } from 'framer-motion'
 
 type View = 'input' | 'dashboard' | 'report'
 
@@ -30,70 +31,76 @@ function App() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
-      {/* Nav */}
-      <nav style={{
-        background: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
-        padding: '0 24px',
-        height: '60px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-      }}>
-        <div
-          style={{ color: 'white', fontSize: '20px', fontWeight: '700', cursor: 'pointer' }}
-          onClick={() => setView('input')}
-        >
-          🔍 HireScope
-        </div>
-        <div style={{ display: 'flex', gap: '16px' }}>
-          <button
+    <div className="min-h-screen bg-[#f1f5f9] text-[#1e293b]">
+      {/* Vibrant Header */}
+      <nav className="header-vibrant sticky top-0 z-50 shadow-md">
+        <div className="header-container">
+          <div
+            className="flex items-center gap-2 cursor-pointer group"
             onClick={() => setView('input')}
-            style={{
-              background: view === 'input' ? 'rgba(255,255,255,0.3)' : 'transparent',
-              color: 'white',
-              border: '1px solid rgba(255,255,255,0.4)',
-              padding: '6px 16px',
-              borderRadius: '6px',
-              fontSize: '14px',
-            }}
           >
-            Analyze Job
-          </button>
-          <button
-            onClick={() => setView('dashboard')}
-            style={{
-              background: view === 'dashboard' ? 'rgba(255,255,255,0.3)' : 'transparent',
-              color: 'white',
-              border: '1px solid rgba(255,255,255,0.4)',
-              padding: '6px 16px',
-              borderRadius: '6px',
-              fontSize: '14px',
-            }}
-          >
-            My Jobs
-          </button>
+            <span className="text-2xl">🔍</span>
+            <span className="font-heading font-bold text-xl tracking-tight">HireScope</span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setView('input')}
+              className={`btn-vibrant-secondary px-4 py-2 ${
+                view === 'input' ? 'bg-white/20 !border-white/40' : ''
+              }`}
+            >
+              Analyze Job
+            </button>
+            <button
+              onClick={() => setView('dashboard')}
+              className={`btn-vibrant-secondary px-4 py-2 ${
+                view === 'dashboard' ? 'bg-white/20 !border-white/40' : ''
+              }`}
+            >
+              My Jobs
+            </button>
+          </div>
         </div>
       </nav>
 
-      {/* Main content */}
-      <main style={{ padding: '32px 24px', maxWidth: view === 'report' ? '100%' : '1100px', margin: '0 auto' }}>
-        {view === 'input' && (
-          <JobInput onJobSubmitted={handleJobSubmitted} />
-        )}
-        {view === 'dashboard' && (
-          <Dashboard
-            key={refreshKey}
-            highlightJobId={selectedJobId}
-            onViewReport={handleViewReport}
-            onAnalyzeNew={() => setView('input')}
-          />
-        )}
-        {view === 'report' && selectedJobId && (
-          <ReportViewer jobId={selectedJobId} onBack={handleBack} />
-        )}
+      <main className={`relative pt-10 ${view === 'report' ? '' : 'max-w-7xl mx-auto px-6'}`}>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={view}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3, ease: 'easeInOut' }}
+          >
+            {view === 'input' && (
+              <JobInput onJobSubmitted={handleJobSubmitted} />
+            )}
+            {view === 'dashboard' && (
+              <Dashboard
+                key={refreshKey}
+                highlightJobId={selectedJobId}
+                onViewReport={handleViewReport}
+                onAnalyzeNew={() => setView('input')}
+              />
+            )}
+            {view === 'report' && selectedJobId && (
+              <ReportViewer jobId={selectedJobId} onBack={handleBack} />
+            )}
+          </motion.div>
+        </AnimatePresence>
       </main>
+
+      {/* Modern Footer */}
+      {view !== 'report' && (
+        <footer className="mt-20 py-12 border-t border-slate-200">
+          <div className="max-w-7xl mx-auto px-6 text-center opacity-50">
+            <p className="text-xs font-bold uppercase tracking-widest">
+              Powered by AI Intelligence & PostgreSQL
+            </p>
+          </div>
+        </footer>
+      )}
     </div>
   )
 }

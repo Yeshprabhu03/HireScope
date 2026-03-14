@@ -36,14 +36,32 @@ async def get_api_key(request: Request, api_key: str = Security(api_key_header))
         )
     return api_key
 
-# In-memory job store (replace with DB in production)
+# In-memory job store with asyncio.Lock for concurrent-safe mutations
 jobs: Dict[str, Dict[str, Any]] = {}
+_jobs_lock = None  # Initialized lazily (asyncio.Lock must be created inside an event loop)
+
+def _get_jobs_lock():
+    """Lazy singleton lock — safe to call from any async context."""
+    global _jobs_lock
+    import asyncio
+    if _jobs_lock is None:
+        _jobs_lock = asyncio.Lock()
+    return _jobs_lock
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("HireScope API starting up...")
     await init_db()
+    # Pre-warm H1B data so first analysis has no cold-load penalty
+    try:
+        from data_sources.dol_h1b import load_h1b_data
+        from config import settings
+        df = load_h1b_data(settings.DOL_H1B_DATA_PATH)
+        if df is not None:
+            logger.info(f"H1B data pre-warmed: {len(df)} records ready")
+    except Exception as e:
+        logger.warning(f"H1B pre-warm failed (non-fatal): {e}")
     yield
     logger.info("HireScope API shutting down...")
 
@@ -173,20 +191,21 @@ async def run_analysis(job_id: str, job_url: str, provider: str = "gemini"):
 async def analyze_job(request: AnalyzeRequest, background_tasks: BackgroundTasks):
     """Submit a job URL for analysis. Returns job_id immediately."""
     job_id = str(uuid.uuid4())
-    jobs[job_id] = {
-        "job_id": job_id,
-        "job_url": request.job_url,
-        "status": "created",
-        "created_at": datetime.now().isoformat(),
-        "error": None,
-        "progress": {
-            "current_step": "queued",
-            "current_step_label": "⏳ Queued for analysis...",
-            "completed_steps": [],
-            "total_steps": 6,
-            "percent": 0,
-        },
-    }
+    async with _get_jobs_lock():
+        jobs[job_id] = {
+            "job_id": job_id,
+            "job_url": request.job_url,
+            "status": "created",
+            "created_at": datetime.now().isoformat(),
+            "error": None,
+            "progress": {
+                "current_step": "queued",
+                "current_step_label": "⏳ Queued for analysis...",
+                "completed_steps": [],
+                "total_steps": 6,
+                "percent": 0,
+            },
+        }
     background_tasks.add_task(run_analysis, job_id, request.job_url, request.provider)
     logger.info(f"Created job_id={job_id} for url={request.job_url} with provider={request.provider}")
     return {"job_id": job_id, "status": "created"}

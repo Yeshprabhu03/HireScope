@@ -13,6 +13,39 @@ logger = logging.getLogger(__name__)
 
 Provider = Literal["gemini", "anthropic", "openai"]
 
+# ---------------------------------------------------------------------------
+# Singleton clients — created once at module load, reused across all calls
+# ---------------------------------------------------------------------------
+_gemini_model = None
+_anthropic_client = None
+_openai_client = None
+
+def _get_gemini_model():
+    global _gemini_model
+    if _gemini_model is None:
+        import google.generativeai as genai
+        from config import settings
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        _gemini_model = genai.GenerativeModel("gemini-2.0-flash")
+    return _gemini_model
+
+def _get_anthropic_client():
+    global _anthropic_client
+    if _anthropic_client is None:
+        from anthropic import AsyncAnthropic
+        from config import settings
+        _anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    return _anthropic_client
+
+def _get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        import httpx
+        from openai import AsyncOpenAI
+        from config import settings
+        _openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, http_client=httpx.AsyncClient())
+    return _openai_client
+
 
 @retry(
     stop=stop_after_attempt(5),
@@ -38,15 +71,11 @@ async def llm_generate(prompt: str, provider: Provider = "gemini", max_tokens: i
 
 async def _generate_gemini(prompt: str, max_tokens: int, temperature: float) -> str:
     import google.generativeai as genai
-    from config import settings
-
-    genai.configure(api_key=settings.GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = _get_gemini_model()
     generation_config = genai.types.GenerationConfig(
         max_output_tokens=max_tokens,
         temperature=temperature,
     )
-
     response = await model.generate_content_async(prompt, generation_config=generation_config)
     if not response or not response.text:
         raise ValueError("Gemini returned empty response")
@@ -54,13 +83,10 @@ async def _generate_gemini(prompt: str, max_tokens: int, temperature: float) -> 
 
 
 async def _generate_anthropic(prompt: str, max_tokens: int, temperature: float) -> str:
-    from anthropic import AsyncAnthropic
+    client = _get_anthropic_client()
     from config import settings
-
     if settings.ANTHROPIC_API_KEY == "placeholder":
         raise ValueError("Anthropic API key not configured")
-
-    client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
     response = await client.messages.create(
         model="claude-3-5-sonnet-20240620",
         max_tokens=max_tokens,
@@ -71,11 +97,7 @@ async def _generate_anthropic(prompt: str, max_tokens: int, temperature: float) 
 
 
 async def _generate_openai(prompt: str, max_tokens: int, temperature: float) -> str:
-    from openai import AsyncOpenAI
-    import httpx
-    from config import settings
-    http_client = httpx.AsyncClient()
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, http_client=http_client)
+    client = _get_openai_client()
     response = await client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],

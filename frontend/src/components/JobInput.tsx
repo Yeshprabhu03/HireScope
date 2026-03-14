@@ -1,162 +1,143 @@
-import { useState, FormEvent } from 'react'
-import { API_HEADERS } from '../api_config'
+import { useState } from 'react'
+import { motion } from 'framer-motion'
+import {
+  Search,
+  Link as LinkIcon,
+  Loader2
+} from 'lucide-react'
 
-interface Props {
+interface JobInputProps {
   onJobSubmitted: (jobId: string) => void
 }
 
+import { API_HEADERS } from '../api_config'
 
-export default function JobInput({ onJobSubmitted }: Props) {
+const JobInput = ({ onJobSubmitted }: JobInputProps) => {
   const [url, setUrl] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [selectedModel] = useState('gemini')
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!url.trim()) {
-      setError('Please enter a job URL')
-      return
-    }
-    setError('')
-    setLoading(true)
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    if (!url) return
+
+    setIsLoading(true)
+    setError(null)
 
     try {
-      const res = await fetch('/api/analyze', {
+      const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: API_HEADERS,
-        body: JSON.stringify({
-          job_url: url.trim(),
-          provider: selectedModel
-        }),
+        body: JSON.stringify({ job_url: url, provider: 'gemini' }),
       })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.detail || 'Failed to submit job')
+
+      if (!response.ok) {
+        const errData = await response.json()
+        throw new Error(errData.detail || 'Failed to submit job')
       }
-      const data = await res.json()
+
+      const data = await response.json()
       onJobSubmitted(data.job_id)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit job')
+    } catch (err: any) {
+      setError(err.message)
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
   return (
-    <div style={{ maxWidth: '680px', margin: '40px auto' }}>
-      {/* Hero */}
-      <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-        <h1 style={{ fontSize: '36px', fontWeight: '800', color: '#1e293b', marginBottom: '12px' }}>
-          Job Intelligence in Seconds
-        </h1>
-        <p style={{ fontSize: '18px', color: '#64748b', lineHeight: '1.6' }}>
+    <div className="flex flex-col items-center">
+      {/* Hero Section */}
+      <div className="text-center mb-12">
+        <h1 className="text-hero mb-4">Job Intelligence in Seconds</h1>
+        <p className="subtext-hero">
           Paste any job URL and get AI-powered salary data, company insights, and interview prep — all in one report.
         </p>
       </div>
 
-      {/* Input card */}
-      <div style={{
-        background: 'white',
-        borderRadius: '16px',
-        padding: '32px',
-        boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
-        border: '1px solid #e2e8f0',
-      }}>
-        <form onSubmit={handleSubmit}>
+      {/* Main Search Bar */}
+      <div className="w-full max-w-3xl mb-16">
+        <div className="search-container-vibrant">
+          <LinkIcon className="search-icon-left" size={20} />
+          <input
+            type="url"
+            placeholder="Paste LinkedIn or job board URL here..."
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            className="search-input-vibrant"
+            disabled={isLoading}
+          />
+          <button
+            onClick={() => handleSubmit()}
+            disabled={isLoading || !url}
+            className="btn-vibrant px-8 py-3 rounded-2xl"
+          >
+            {isLoading ? (
+              <Loader2 className="animate-spin" size={20} />
+            ) : (
+              <>
+                <Search size={20} />
+                <span className="hidden sm:inline">Analyze Job</span>
+              </>
+            )}
+          </button>
+        </div>
 
-{/* Model Selector hidden as per request */}
-
-          <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px', color: '#374151' }}>
-            Job Posting URL
-          </label>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <input
-              type="url"
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              placeholder="https://www.linkedin.com/jobs/view/..."
-              disabled={loading}
-              style={{
-                flex: 1,
-                padding: '12px 16px',
-                border: `2px solid ${error ? '#ef4444' : '#e2e8f0'}`,
-                borderRadius: '8px',
-                fontSize: '15px',
-                outline: 'none',
-                transition: 'border-color 0.2s',
-              }}
-              onFocus={e => { if (!error) e.target.style.borderColor = '#2563eb' }}
-              onBlur={e => { if (!error) e.target.style.borderColor = '#e2e8f0' }}
-            />
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                background: loading ? '#94a3b8' : 'linear-gradient(135deg, #2563eb, #7c3aed)',
-                color: 'white',
-                border: 'none',
-                padding: '12px 24px',
-                borderRadius: '8px',
-                fontSize: '15px',
-                fontWeight: '600',
-                whiteSpace: 'nowrap',
-                transition: 'opacity 0.2s',
-              }}
-            >
-              {loading ? '⏳ Analyzing...' : '🔍 Analyze'}
-            </button>
+        {error && (
+          <div className="mt-4 p-4 bg-red-50 border border-red-100 text-red-600 rounded-xl text-sm flex items-center gap-2">
+            <span className="text-lg">⚠️</span>
+            {error}
           </div>
-          {error && (
-            <p style={{ color: '#ef4444', fontSize: '13px', marginTop: '6px' }}>{error}</p>
-          )}
-        </form>
+        )}
 
-        {/* Example URLs */}
-        <div style={{ marginTop: '20px' }}>
-          <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '8px' }}>
-            Supported platforms:
-          </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            {['LinkedIn', 'Greenhouse', 'Lever', 'Workday', 'Indeed'].map(platform => (
-              <span key={platform} style={{
-                background: '#f1f5f9',
-                color: '#475569',
-                padding: '4px 12px',
-                borderRadius: '20px',
-                fontSize: '12px',
-                fontWeight: '500',
-              }}>{platform}</span>
+        <div className="mt-8 flex flex-col items-center gap-4">
+          <div className="flex items-center gap-4 opacity-40">
+            <div className="h-px w-12 bg-slate-300"></div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+              Works with
+            </span>
+            <div className="h-px w-12 bg-slate-300"></div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {['LinkedIn', 'Greenhouse', 'Lever', 'Workday', 'Indeed'].map((platform) => (
+              <span key={platform} className="platform-badge">
+                {platform}
+              </span>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Feature highlights */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr',
-        gap: '16px',
-        marginTop: '24px',
-      }}>
-        {[
-          { icon: '💰', title: 'Salary Intelligence', desc: 'Real H1B + market data' },
-          { icon: '🏢', title: 'Company Intel', desc: 'CEO, culture, news' },
-          { icon: '🎯', title: 'Interview Prep', desc: 'RAG-powered Q&A' },
-        ].map(f => (
-          <div key={f.title} style={{
-            background: 'white',
-            borderRadius: '10px',
-            padding: '20px',
-            border: '1px solid #e2e8f0',
-            textAlign: 'center',
-          }}>
-            <div style={{ fontSize: '28px', marginBottom: '8px' }}>{f.icon}</div>
-            <div style={{ fontWeight: '600', fontSize: '14px', color: '#1e293b' }}>{f.title}</div>
-            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>{f.desc}</div>
-          </div>
-        ))}
+      {/* Feature Grid */}
+      <div className="feature-grid">
+        <div className="card-vibrant p-8 text-center flex flex-col items-center">
+          <span className="text-4xl mb-4">💰</span>
+          <h3 className="text-lg font-bold mb-2 font-heading">Salary Intelligence</h3>
+          <p className="text-sm text-slate-500 leading-relaxed">
+            Real H1B + market data for the specific role and location.
+          </p>
+        </div>
+
+        <div className="card-vibrant p-8 text-center flex flex-col items-center">
+          <span className="text-4xl mb-4">🏢</span>
+          <h3 className="text-lg font-bold mb-2 font-heading">Company Intel</h3>
+          <p className="text-sm text-slate-500 leading-relaxed">
+            Deep dive into culture, financials, and recent news.
+          </p>
+        </div>
+
+        <div className="card-vibrant p-8 text-center flex flex-col items-center">
+          <span className="text-4xl mb-4">🎯</span>
+          <h3 className="text-lg font-bold mb-2 font-heading">Interview Prep</h3>
+          <p className="text-sm text-slate-500 leading-relaxed">
+            Personalized Q&A based on the actual job requirements.
+          </p>
+        </div>
       </div>
     </div>
   )
 }
+
+export default JobInput
