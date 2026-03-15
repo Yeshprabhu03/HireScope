@@ -7,11 +7,12 @@ import {
 
 interface JobInputProps {
   onJobSubmitted: (jobId: string) => void
+  sessionId: string
 }
 
 import { API_HEADERS } from '../api_config'
 
-const JobInput = ({ onJobSubmitted }: JobInputProps) => {
+const JobInput = ({ onJobSubmitted, sessionId }: JobInputProps) => {
   const [url, setUrl] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -29,7 +30,11 @@ const JobInput = ({ onJobSubmitted }: JobInputProps) => {
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: API_HEADERS,
-        body: JSON.stringify({ job_url: url, provider: 'gemini' }),
+        body: JSON.stringify({
+          job_url: url,
+          provider: 'gemini',
+          session_id: sessionId
+        }),
       })
 
       if (!response.ok) {

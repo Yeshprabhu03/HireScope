@@ -86,6 +86,7 @@ app.add_middleware(
 class AnalyzeRequest(BaseModel):
     job_url: str
     provider: str = "gemini"
+    session_id: Optional[str] = None
 
 
 class RAGQueryRequest(BaseModel):
@@ -195,6 +196,7 @@ async def analyze_job(request: AnalyzeRequest, background_tasks: BackgroundTasks
         jobs[job_id] = {
             "job_id": job_id,
             "job_url": request.job_url,
+            "session_id": request.session_id,
             "status": "created",
             "created_at": datetime.now().isoformat(),
             "error": None,
@@ -289,8 +291,8 @@ async def submit_feedback(job_id: str, request: FeedbackRequest):
 
 
 @app.get("/api/jobs")
-async def list_jobs():
-    """List all analyzed jobs from memory and database."""
+async def list_jobs(limit: int = 50, offset: int = 0, session_id: Optional[str] = None):
+    """List analyzed jobs with pagination and session filtering."""
     # Memory jobs
     mem_jobs = [
         {
@@ -303,25 +305,32 @@ async def list_jobs():
             "created_at": j.get("created_at") or datetime.now().isoformat()
         }
         for jid, j in jobs.items()
+        if not session_id or j.get("session_id") == session_id
     ]
 
-    # DB jobs (historical)
+    # If filtering by session, we ONLY show session jobs (from memory)
+    # This fulfills the "starts blank" requirement for new sessions
+    if session_id:
+        mem_jobs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return mem_jobs
+
+    # DB jobs (historical) - only fetched if NO session_id provided (e.g., admin view or full vault)
     try:
         from database import engine, JobPosting
         from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
         from sqlmodel import select
 
         async with SQLModelAsyncSession(engine) as session:
-            statement = select(JobPosting).order_by(JobPosting.scraped_at.desc())
+            statement = select(JobPosting).order_by(JobPosting.scraped_at.desc()).offset(offset).limit(limit)
             results = await session.execute(statement)
             db_jobs = results.scalars().all()
 
-            # De-duplicate: if in memory, don't show from DB
             mem_ids = {j["job_id"] for j in mem_jobs}
+            historical_jobs = []
             for dj in db_jobs:
                 jid = str(dj.id)
                 if jid not in mem_ids:
-                    mem_jobs.append({
+                    historical_jobs.append({
                         "job_id": jid,
                         "job_url": dj.job_url,
                         "status": "completed",
@@ -330,13 +339,13 @@ async def list_jobs():
                         "progress": {"percent": 100, "current_step_label": "✅ Analysis complete!"},
                         "created_at": dj.scraped_at.isoformat() if dj.scraped_at else datetime.now().isoformat()
                     })
+
+            combined = mem_jobs + historical_jobs
+            combined.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            return combined
     except Exception as e:
         logger.error(f"Failed to fetch historical jobs: {e}")
-
-    # Sort combined list by created_at descending
-    mem_jobs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-
-    return mem_jobs
+        return mem_jobs
 
 
 @app.post("/api/rag/query")

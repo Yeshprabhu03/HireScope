@@ -10,6 +10,7 @@ function App() {
   const [view, setView] = useState<View>('input')
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [sessionId] = useState(() => crypto.randomUUID())
 
   const handleJobSubmitted = (jobId: string) => {
     setSelectedJobId(jobId)
@@ -74,7 +75,7 @@ function App() {
             transition={{ duration: 0.3, ease: 'easeInOut' }}
           >
             {view === 'input' && (
-              <JobInput onJobSubmitted={handleJobSubmitted} />
+              <JobInput onJobSubmitted={handleJobSubmitted} sessionId={sessionId} />
             )}
             {view === 'dashboard' && (
               <Dashboard
@@ -82,6 +83,7 @@ function App() {
                 highlightJobId={selectedJobId}
                 onViewReport={handleViewReport}
                 onAnalyzeNew={() => setView('input')}
+                sessionId={sessionId}
               />
             )}
             {view === 'report' && selectedJobId && (
