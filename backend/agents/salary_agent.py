@@ -31,19 +31,45 @@ MOCK_SALARY_INTELLIGENCE = {
 
 
 def parse_salary_from_text(salary_text: Optional[str]) -> Optional[dict]:
-    """Extract numeric salary range from free text."""
+    """Extract numeric salary range from free text. Handles multiple formats like $76,600.00/yr."""
     if not salary_text:
         return None
-    # Match patterns like $180,000 - $250,000 or 180k-250k
-    pattern = r"\$?([\d,]+)k?\s*[-–to]+\s*\$?([\d,]+)k?"
-    match = re.search(pattern, salary_text, re.IGNORECASE)
-    if match:
-        low = float(match.group(1).replace(",", ""))
-        high = float(match.group(2).replace(",", ""))
-        if "k" in salary_text.lower():
-            low *= 1000
-            high *= 1000
-        return {"min": int(low), "max": int(high)}
+
+    # Clean the string slightly for easier matching: remove periodic labels that confuse simple ranges
+    # but keep them for 'k' detection if needed.
+    # e.g. "$76,600.00/yr" -> "$76,600.00"
+    clean_text = re.sub(r'/(?:yr|hr|year|hour|annually|mo|month)', '', salary_text, flags=re.I)
+
+    # Pattern 1: $180,000 - $250,000 or $180K-$250K (handles decimals)
+    pattern1 = r"\$?([\d,]+(?:\.\d+)?)[kK]?\s*[-–to]+\s*\$?([\d,]+(?:\.\d+)?)[kK]?"
+    # Pattern 2: between $63,000 and $93,000
+    pattern2 = r"between\s+\$?([\d,]+(?:\.\d+)?)[kK]?\s+and\s+\$?([\d,]+(?:\.\d+)?)[kK]?"
+    # Pattern 3: from $X to $Y
+    pattern3 = r"from\s+\$?([\d,]+(?:\.\d+)?)[kK]?\s+to\s+\$?([\d,]+(?:\.\d+)?)[kK]?"
+
+    for pattern in [pattern2, pattern3, pattern1]:
+        match = re.search(pattern, clean_text, re.IGNORECASE)
+        if match:
+            try:
+                low_raw = match.group(1).replace(",", "")
+                high_raw = match.group(2).replace(",", "")
+                low = float(low_raw)
+                high = float(high_raw)
+
+                # Handle 'k' multiplier
+                if "k" in salary_text.lower() and low < 1000:
+                    low *= 1000
+                    high *= 1000
+
+                # Sanity check: if it's an hourly rate (e.g. 50-70), we don't treat it as 50k-70k
+                # unless 'k' was explicit. But for now, HireScope assumes annual if > 5000.
+                # If it's small (like 50-100), it's likely hourly.
+                if low < 500: # Very likely hourly or invalid for this tool's annual focus
+                    return None
+
+                return {"min": int(low), "max": int(high)}
+            except (ValueError, IndexError):
+                continue
     return None
 
 
@@ -165,24 +191,38 @@ async def analyze_salary(
         )
         sources_used.append("JD Mention")
 
-    # Source 3: Claude market estimate
+    # Source 3: LLM market estimate
+    # IMPORTANT: Only run if there's no explicit JD disclosure.
+    # If the company published a salary range, that's the ground truth — don't let an LLM estimate inflate it.
     market = await estimate_market_salary_with_claude(
         job_title, company, location, seniority_level, required_skills, jd_text_snippet=jd_text_snippet, use_mock=use_mock, provider=provider
     )
-    salary_estimates.append(
-        {"source": "Market Estimate", "min": market["min"], "max": market["max"],
-         "median": market["median"]}
-    )
-    sources_used.append("Market Estimate")
+    if not jd_salary:
+        # No JD disclosure — use market estimate as the primary source
+        salary_estimates.append(
+            {"source": "Market Estimate", "min": market["min"], "max": market["max"],
+             "median": market["median"]}
+        )
+        sources_used.append("Market Estimate")
+    else:
+        # JD disclosed a salary — use market estimate for context only in notes, not in the range
+        logger.info(f"JD disclosed salary ${jd_salary['min']:,}-${jd_salary['max']:,}. Using it as authoritative range (market estimate suppressed from aggregation).")
 
     # Aggregate
     all_mins = [s["min"] for s in salary_estimates]
     all_maxs = [s["max"] for s in salary_estimates]
     all_medians = [s["median"] for s in salary_estimates]
 
-    agg_min = int(min(all_mins))
-    agg_max = int(max(all_maxs))
-    agg_median = int(sum(all_medians) / len(all_medians))
+    if jd_salary:
+        # JD disclosed salary = authoritative base range
+        agg_min = jd_salary["min"]
+        agg_max = jd_salary["max"]
+        agg_median = (agg_min + agg_max) // 2
+    else:
+        # No disclosure — average all available sources
+        agg_min = int(sum(all_mins) / len(all_mins))
+        agg_max = int(sum(all_maxs) / len(all_maxs))
+        agg_median = int(sum(all_medians) / len(all_medians))
 
     # Confidence: 0.45 (AI only) → +0.20 for JD mention → +0.25 for H1B data
     confidence = 0.45
@@ -232,11 +272,11 @@ async def analyze_salary(
         "data_label": data_label,
         "sources_used": sources_used,
         "breakdown": {
-            "base_salary": f"${agg_min:,} - ${agg_max:,}",
+            "base_salary": f"${agg_min:,} - ${agg_max:,}" + (" (as disclosed in JD)" if jd_salary else ""),
             "bonus": f"${bonus_low:,} - ${bonus_high:,}  (10–20% of base)",
             "equity": f"${equity_low:,} - ${equity_high:,} / yr  (RSUs, 4-yr vest)",
             "total_comp": f"${total_low:,} - ${total_high:,}",
         },
-        "notes": market.get("notes", ""),
+        "notes": (f"Base salary as disclosed in job description. " if jd_salary else "") + market.get("notes", ""),
         "source_details": salary_estimates,
     }

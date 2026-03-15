@@ -108,15 +108,23 @@ async def get_job_posting(job_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 async def save_job_posting(job_id: str, job_url: str, company: str, job_title: str, parsed_jd: dict, raw_html: str):
-    """Insert or update a job posting in the database."""
+    """Insert or update a job posting in the database (upsert by URL)."""
     async with SQLModelAsyncSession(engine) as session:
         uid = UUID(job_id)
+
+        # First try to find by primary key (job_id)
         statement = select(JobPosting).where(JobPosting.id == uid)
         results = await session.execute(statement)
         job = results.scalar_one_or_none()
 
+        # If not found by id, check by URL (handles re-analysis of same job)
+        if not job:
+            url_statement = select(JobPosting).where(JobPosting.job_url == job_url)
+            url_results = await session.execute(url_statement)
+            job = url_results.scalar_one_or_none()
+
         if job:
-            job.job_url = job_url
+            # Update the existing record
             job.company = company
             job.job_title = job_title
             job.parsed_jd = parsed_jd

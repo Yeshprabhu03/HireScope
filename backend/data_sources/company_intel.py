@@ -4,6 +4,7 @@ Company Intelligence: fetches company data from Wikipedia API and public sources
 import logging
 import httpx
 from typing import Optional
+from urllib.parse import quote
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
@@ -93,7 +94,7 @@ async def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, 
         if sub_team and sub_team != "N/A" and not is_retry:
             try:
                 logger.info(f"Searching Wikipedia for specific sub-team: '{sub_team}' at {company}")
-                search_api_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={httpx.utils.quote(f'{company} {sub_team}')}&format=json"
+                search_api_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={quote(f'{company} {sub_team}')}&format=json"
                 search_res = await client.get(search_api_url, headers={"User-Agent": "HireScope/1.0"}, timeout=10)
                 if search_res.status_code == 200:
                     results = search_res.json().get("query", {}).get("search", [])
@@ -113,7 +114,7 @@ async def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, 
         # 1b. Company Search Fallback: If direct lookups fail, try searching for the company name
         if not is_retry:
             try:
-                search_api_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={httpx.utils.quote(resolved_company)}&format=json"
+                search_api_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={quote(resolved_company)}&format=json"
                 search_res = await client.get(search_api_url, headers={"User-Agent": "HireScope/1.0"}, timeout=10)
                 if search_res.status_code == 200:
                     results = search_res.json().get("query", {}).get("search", [])
@@ -129,7 +130,7 @@ async def fetch_wikipedia_summary(company: str, sub_team: Optional[str] = None, 
             try:
                 logger.info(f"Trying Wikipedia lookup for: '{search_name}'")
                 response = await client.get(
-                    f"{search_url}{httpx.utils.quote(search_name.replace(' ', '_'))}",
+                    f"{search_url}{quote(search_name.replace(' ', '_'))}",
                     headers={"User-Agent": "HireScope/1.0 (educational project)"},
                     timeout=10,
                 )

@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { useState, useRef } from 'react'
 import {
   Search,
   Link as LinkIcon,
@@ -16,11 +15,13 @@ const JobInput = ({ onJobSubmitted }: JobInputProps) => {
   const [url, setUrl] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const isSubmittingRef = useRef(false)  // synchronous guard against double-submit
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
-    if (!url) return
+    if (!url || isSubmittingRef.current) return  // block concurrent submissions
 
+    isSubmittingRef.current = true
     setIsLoading(true)
     setError(null)
 
@@ -37,11 +38,13 @@ const JobInput = ({ onJobSubmitted }: JobInputProps) => {
       }
 
       const data = await response.json()
+      setUrl('')  // clear input after successful submission
       onJobSubmitted(data.job_id)
     } catch (err: any) {
       setError(err.message)
     } finally {
       setIsLoading(false)
+      isSubmittingRef.current = false
     }
   }
 
@@ -57,19 +60,18 @@ const JobInput = ({ onJobSubmitted }: JobInputProps) => {
 
       {/* Main Search Bar */}
       <div className="w-full max-w-3xl mb-16">
-        <div className="search-container-vibrant">
+        <form onSubmit={handleSubmit} className="search-container-vibrant">
           <LinkIcon className="search-icon-left" size={20} />
           <input
             type="url"
             placeholder="Paste LinkedIn or job board URL here..."
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             className="search-input-vibrant"
             disabled={isLoading}
           />
           <button
-            onClick={() => handleSubmit()}
+            type="submit"
             disabled={isLoading || !url}
             className="btn-vibrant px-8 py-3 rounded-2xl"
           >
@@ -82,7 +84,7 @@ const JobInput = ({ onJobSubmitted }: JobInputProps) => {
               </>
             )}
           </button>
-        </div>
+        </form>
 
         {error && (
           <div className="mt-4 p-4 bg-red-50 border border-red-100 text-red-600 rounded-xl text-sm flex items-center gap-2">
