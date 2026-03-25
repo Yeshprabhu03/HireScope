@@ -129,6 +129,11 @@ def generate_html_report(
         "company_networking": company_intel.get("linkedin_networking", "N/A"),
         "company_revenue_breakdown": company_intel.get("revenue_breakdown", []),
         "company_org_chart": company_intel.get("org_chart_mermaid", ""),
+        "company_glassdoor_rating": company_intel.get("glassdoor_rating"),
+        "company_glassdoor_reviews": company_intel.get("glassdoor_review_count"),
+        "company_glassdoor_pros": company_intel.get("glassdoor_pros", []),
+        "company_glassdoor_cons": company_intel.get("glassdoor_cons", []),
+        "company_glassdoor_url": company_intel.get("glassdoor_url"),
         "edgar_link": edgar_link,
 
         "interview_difficulty": interview_intel.get("difficulty", "unknown").title(),

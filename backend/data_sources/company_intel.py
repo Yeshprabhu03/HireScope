@@ -3,6 +3,7 @@ Company Intelligence: fetches company data from Wikipedia API and public sources
 """
 import logging
 import httpx
+import re
 from typing import Optional
 from urllib.parse import quote
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -202,9 +203,22 @@ async def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = No
         "culture_highlights": [],
         "revenue_breakdown": [],
         "org_chart_mermaid": "",
-        "glassdoor_rating": None,
         "source": "Wikipedia API",
     }
+
+    # 0. Fetch Glassdoor data via search/MCP logic
+    try:
+        from utils.glassdoor import get_glassdoor_data
+        gd_data = await get_glassdoor_data(company)
+        if gd_data and gd_data.get("rating") != 0:
+            intel["glassdoor_rating"] = gd_data.get("rating")
+            intel["glassdoor_review_count"] = gd_data.get("review_count")
+            intel["glassdoor_pros"] = gd_data.get("pros", [])
+            intel["glassdoor_cons"] = gd_data.get("cons", [])
+            intel["glassdoor_url"] = gd_data.get("url")
+            logger.info(f"Successfully integrated Glassdoor rating ({gd_data.get('rating')}) for '{company}'")
+    except Exception as e:
+        logger.warning(f"Could not fetch Glassdoor data for '{company}': {e}")
 
     # 1. Base info via Wikipedia
     # We now fetch TWO summaries if a sub-team is present to avoid one overwriting the other
@@ -278,11 +292,33 @@ Return ONLY valid JSON with this exact structure (no markdown, no extra text):
   "revenue_breakdown": [
     {{"division": "<Name of major business division>", "revenue_percentage": "<Approx % of total revenue, e.g. '70%'>"}}
   ],
-  "org_chart_mermaid": "<A valid Mermaid.js flowchart string (e.g. 'graph TD; A[Company]-->B[Division];') showing the high-level company structure down to the specific business unit and role. Keep it simple and strictly valid Mermaid syntax.>"
+  "org_chart_mermaid": "<MANDATORY: A strictly valid Mermaid.js 'graph TD' string showing the hierarchy from top company levels down to business unit and role. Use ONLY [Name] for nodes. DO NOT wrap in code blocks. Example: 'graph TD; Google[Google]-->Ads[Ads Division]; Ads-->Eng[Engineering];'>"
 }}
-Use 'N/A' for any field you are not confident about. Do NOT invent data. If a revenue breakdown or org chart cannot be reasonably estimated, provide empty arrays or empty strings."""
+Use 'N/A' for any field you are not confident about. Do NOT invent data. If a revenue breakdown or org chart cannot be reasonably estimated, provide empty arrays or empty strings.
+IMPORTANT: The org_chart_mermaid must be a single string without markdown formatting."""
 
             ai_data = await llm_generate_json(prompt, provider=provider, max_tokens=900, temperature=0.0)
+
+            # Cleanup Mermaid string
+            if "org_chart_mermaid" in ai_data:
+                m_str = ai_data["org_chart_mermaid"]
+                # 1. Strip potential markdown blocks
+                m_str = re.sub(r"```mermaid\s*", "", m_str)
+                m_str = re.sub(r"```\s*", "", m_str)
+                m_str = m_str.strip()
+
+                # 2. Add 'graph TD;' if missing
+                if m_str and not (m_str.startswith("graph") or m_str.startswith("flowchart")):
+                    m_str = f"graph TD; {m_str}"
+
+                # 3. Robust fix: Remove problematic characters and ensure basic graph structure
+                m_str = m_str.replace("&", "and").replace("(", "[").replace(")", "]")
+                # Remove any nested markdown if the LLM was stubborn
+                m_str = re.sub(r"\[+([^\[\]]+)\]+", r"[\1]", m_str)
+
+                # Final assignment
+                ai_data["org_chart_mermaid"] = m_str
+                logger.info(f"Generated Sanitized Mermaid: {m_str}")
 
             # Fetch real-time market cap using Yahoo Finance
             ticker = ai_data.get("ticker", "N/A")

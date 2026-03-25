@@ -1,8 +1,11 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, ChangeEvent } from 'react'
 import {
   Search,
   Link as LinkIcon,
-  Loader2
+  Loader2,
+  Upload,
+  FileText,
+  X
 } from 'lucide-react'
 
 interface JobInputProps {
@@ -14,28 +17,59 @@ import { API_HEADERS } from '../api_config'
 
 const JobInput = ({ onJobSubmitted, sessionId }: JobInputProps) => {
   const [url, setUrl] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const isSubmittingRef = useRef(false)  // synchronous guard against double-submit
 
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0])
+      setUrl('') // Mutually exclusive
+    }
+  }
+
+  const handleUrlChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setUrl(e.target.value)
+    setFile(null) // Mutually exclusive
+  }
+
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
-    if (!url || isSubmittingRef.current) return  // block concurrent submissions
+    if ((!url && !file) || isSubmittingRef.current) return
 
     isSubmittingRef.current = true
     setIsLoading(true)
     setError(null)
 
     try {
-      const response = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: API_HEADERS,
-        body: JSON.stringify({
-          job_url: url,
-          provider: 'gemini',
-          session_id: sessionId
-        }),
-      })
+      let response;
+      if (file) {
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('provider', 'gemini')
+        if (sessionId) formData.append('session_id', sessionId)
+
+        const uploadHeaders: Record<string, string> = { ...API_HEADERS }
+        delete uploadHeaders['Content-Type']
+
+        response = await fetch('/api/analyze/pdf', {
+          method: 'POST',
+          headers: uploadHeaders,
+          body: formData,
+        })
+      } else {
+        response = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: API_HEADERS,
+          body: JSON.stringify({
+            job_url: url,
+            provider: 'gemini',
+            session_id: sessionId
+          }),
+        })
+      }
 
       if (!response.ok) {
         const errData = await response.json()
@@ -43,7 +77,8 @@ const JobInput = ({ onJobSubmitted, sessionId }: JobInputProps) => {
       }
 
       const data = await response.json()
-      setUrl('')  // clear input after successful submission
+      setUrl('')
+      setFile(null)
       onJobSubmitted(data.job_id)
     } catch (err: any) {
       setError(err.message)
@@ -65,30 +100,73 @@ const JobInput = ({ onJobSubmitted, sessionId }: JobInputProps) => {
 
       {/* Main Search Bar */}
       <div className="w-full max-w-3xl mb-16">
-        <form onSubmit={handleSubmit} className="search-container-vibrant">
-          <LinkIcon className="search-icon-left" size={20} />
+        <form onSubmit={handleSubmit} className="search-container-vibrant flex-col sm:flex-row gap-4">
+          {!file ? (
+            <>
+              <LinkIcon className="search-icon-left hidden sm:block" size={20} />
+              <input
+                type="url"
+                placeholder="Paste LinkedIn or job board URL here..."
+                value={url}
+                onChange={handleUrlChange}
+                className="search-input-vibrant"
+                disabled={isLoading}
+              />
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-6 py-4 mr-0 sm:mr-2 shadow-sm w-full">
+              <div className="flex items-center gap-3 text-indigo-700 font-medium overflow-hidden">
+                <FileText size={24} className="text-indigo-500 flex-shrink-0" />
+                <span className="truncate max-w-[200px] sm:max-w-xs">{file.name}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFile(null)}
+                className="text-slate-400 hover:text-red-500 transition-colors flex-shrink-0 ml-2"
+                disabled={isLoading}
+              >
+                <X size={20} />
+              </button>
+            </div>
+          )}
+
           <input
-            type="url"
-            placeholder="Paste LinkedIn or job board URL here..."
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="search-input-vibrant"
-            disabled={isLoading}
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="application/pdf"
+            className="hidden"
           />
-          <button
-            type="submit"
-            disabled={isLoading || !url}
-            className="btn-vibrant px-8 py-3 rounded-2xl"
-          >
-            {isLoading ? (
-              <Loader2 className="animate-spin" size={20} />
-            ) : (
-              <>
-                <Search size={20} />
-                <span className="hidden sm:inline">Analyze Job</span>
-              </>
+
+          <div className="flex gap-2 w-full sm:w-auto mt-4 sm:mt-0 justify-end">
+            {!file && !url && (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading}
+                className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors px-6 py-3 rounded-2xl flex items-center justify-center whitespace-nowrap shadow-sm hover:shadow-md"
+                title="Upload PDF Job Description"
+              >
+                <Upload size={20} />
+              </button>
             )}
-          </button>
+
+            <button
+              type="submit"
+              disabled={isLoading || (!url && !file)}
+              className="btn-vibrant px-8 py-3 rounded-2xl w-full sm:w-auto flex-1 sm:flex-none justify-center"
+            >
+              {isLoading ? (
+                <Loader2 className="animate-spin" size={20} />
+              ) : (
+                <>
+                  <Search size={20} />
+                  <span className="hidden sm:inline">Analyze Job</span>
+                  <span className="sm:hidden">Analyze</span>
+                </>
+              )}
+            </button>
+          </div>
         </form>
 
         {error && (

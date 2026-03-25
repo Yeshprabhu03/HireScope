@@ -42,6 +42,7 @@ class HireScopeState(TypedDict):
 
     # Execution control
     browser_retried: bool
+    is_upload: bool
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +58,10 @@ async def fetch_html_node(state: HireScopeState) -> dict:
     logger.info(f"[{job_id}] Fetching HTML from {job_url} (mock={use_mock})")
 
     from utils.job_fetcher import get_job_content
+
+    if state.get("is_upload"):
+        logger.info(f"[{job_id}] Bypassing fetch for PDF upload")
+        return {"status": "fetched"}
 
     try:
         html, text = get_job_content(job_url, use_mock=use_mock)
@@ -147,9 +152,9 @@ async def fetch_company_node(state: HireScopeState) -> dict:
         if company != "Unknown":
             cached_company = await get_company_snapshot(cache_key)
             if cached_company and cached_company.get("data"):
-                snapshot_date_str = cached_company.get("snapshot_date")
-                if snapshot_date_str:
-                    snapshot_date = datetime.fromisoformat(snapshot_date_str)
+                snapshot_date_raw = cached_company.get("snapshot_date")
+                if snapshot_date_raw:
+                    snapshot_date = snapshot_date_raw if isinstance(snapshot_date_raw, datetime) else datetime.fromisoformat(snapshot_date_raw)
                     if datetime.now() - snapshot_date < timedelta(days=30):
                         return {"company_intelligence": cached_company["data"]}
 
@@ -373,7 +378,7 @@ def _update_progress_live(jobs: dict, job_id: str, node_name: str, completed: li
     }
 
 
-async def run_job_analysis(job_id: str, job_url: str, provider: str = "gemini", jobs: dict = None) -> dict:
+async def run_job_analysis(job_id: str, job_url: str, provider: str = "gemini", jobs: dict = None, uploaded_text: str = None) -> dict:
     from config import settings
 
     def get_display_name(p):
@@ -396,8 +401,13 @@ async def run_job_analysis(job_id: str, job_url: str, provider: str = "gemini", 
         "use_mock": settings.USE_MOCK_DATA,
         "provider": provider,
         "model_display_name": get_display_name(provider),
-        "browser_retried": False
+        "browser_retried": False,
+        "is_upload": bool(uploaded_text)
     }
+
+    if uploaded_text:
+        initial_state["html_content"] = uploaded_text
+        initial_state["text_content"] = uploaded_text
 
     final_state = initial_state
     completed = []
