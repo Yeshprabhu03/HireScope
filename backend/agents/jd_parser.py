@@ -165,6 +165,7 @@ Rules:
 - LOOK CLOSELY for internal team names, sub-brands, or specific subsidiaries (e.g. 'NYSE' at Intercontinental Exchange, 'Ayco' at Goldman, 'Waymo' at Alphabet, 'AWS' at Amazon) and set `sub_team`.
 - If a `sub_team` is found, ALSO extract a 1-2 sentence `extracted_team_context` describing what that specific team does based on the JD text.
 - For `company`, prioritize the common brand name (e.g., 'Intercontinental Exchange' or 'ICE') rather than the full legal entity like 'Intercontinental Exchange Holdings, Inc.' if both are present.
+- CRITICAL: ALWAYS extract extensive 'required_skills' and 'key_responsibilities'. Even if they are buried in paragraphs and not bulleted, you MUST find and list them. DO NOT leave them empty.
 
 Input:
 {clean_text}"""

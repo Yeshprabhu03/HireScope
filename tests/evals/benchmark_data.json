@@ -1,0 +1,44 @@
+{
+  "companies": [
+    {
+      "name": "Microsoft",
+      "type": "Public Tech Giant",
+      "expected_public": "True",
+      "expected_glassdoor_valid": "True",
+      "test_role": "Senior Program Manager",
+      "test_sub_team": "Xbox"
+    },
+    {
+      "name": "Stripe",
+      "type": "Large Private Fintech",
+      "expected_public": "False",
+      "expected_glassdoor_valid": "True",
+      "test_role": "Software Engineer",
+      "test_sub_team": "Payments API"
+    },
+    {
+      "name": "Goldman Sachs",
+      "type": "Public Financial Institution",
+      "expected_public": "True",
+      "expected_glassdoor_valid": "True",
+      "test_role": "Quantitative Analyst",
+      "test_sub_team": "Ayco"
+    },
+    {
+      "name": "SomeFakeLocalPlumberLLC123",
+      "type": "Unknown Small Business",
+      "expected_public": "False",
+      "expected_glassdoor_valid": "False",
+      "test_role": "Plumber",
+      "test_sub_team": "N/A"
+    },
+    {
+      "name": "OpenAI",
+      "type": "High-Growth Private AI Company",
+      "expected_public": "False",
+      "expected_glassdoor_valid": "True",
+      "test_role": "Research Scientist",
+      "test_sub_team": "Alignment"
+    }
+  ]
+}
