@@ -18,6 +18,7 @@ HireScope is an AI-powered job analysis platform that transforms any job posting
 - **🎯 High-Fidelity Mastery Roadmap** — Role-aware, dynamic RAG-powered interview intelligence featuring hierarchical technical/non-technical mastery categories. Includes multi-platform data vetting (Reddit, WallStreetOasis, Exponent).
 - **📊 Professional HTML Report** — Full-width, clean UI report with Mermaid-driven corporate structure visualization and confidence indicators.
 - **⏱️ Real-Time Progress** — Live progress bar powered by LangGraph streaming, showing each analysis node as it completes.
+- **🔌 MCP Integration** — Includes a fully compliant **Model Context Protocol (MCP)** server, allowing AI clients like Claude Desktop and Cursor to natively trigger job analysis and search your historical vault. See `mcp_guide.md` for setup.
 
 ## 🧠 Continuous Learning Architecture (Updated March 13, 2026)
 
@@ -35,6 +36,8 @@ HireScope recently evolved from a stateless script into an intelligent, stateful
 HireScope/
 ├── backend/                  # FastAPI + Python
 │   ├── main.py               # API server & job orchestration
+│   ├── mcp_server.py         # Model Context Protocol (MCP) Server for LLM clients
+│   ├── database.py           # Universal SQLite/PostgreSQL caching & storage
 │   ├── config.py             # Environment configuration
 │   ├── agents/
 │   │   ├── orchestrator.py   # LangGraph pipeline (6-step analysis)
@@ -46,7 +49,9 @@ HireScope/
 │   │   └── dol_h1b.py        # DOL H1B salary data
 │   ├── utils/
 │   │   ├── llm.py            # Centralized Gemini API helper
-│   │   └── job_fetcher.py    # URL scraping (requests + Playwright)
+│   │   ├── job_fetcher.py    # URL scraping (requests + Playwright)
+│   │   ├── browser_fetch.py  # Advanced stealth Playwright fetcher
+│   │   └── glassdoor.py      # Glassdoor company reviews API
 │   ├── rag/                  # RAG for interview experiences
 │   └── output/
 │       └── report_gen.py     # HTML report generator
@@ -55,6 +60,10 @@ HireScope/
 │       └── components/
 │           ├── Dashboard.tsx  # Job list with progress tracking
 │           └── ReportViewer.tsx # Report display & editing
+├── tests/                    # Parameterized evals & deterministic test suite
+├── chroma_db/                # Local ChromaDB vector storage for RAG
+├── data/                     # Local H1B CSVs & interview corpus JSONs
+├── mcp_guide.md              # Documentation for Claude Desktop integration
 └── .env                      # API keys (not committed)
 ```
 
