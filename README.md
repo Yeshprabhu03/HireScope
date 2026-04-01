@@ -10,6 +10,7 @@ HireScope is an AI-powered job analysis platform that transforms any job posting
 ## ✨ Features
 
 - **🌐 Robust Job Page Scraping** — Fetches and parses job postings from any URL natively into structured JSON. Includes dynamic extraction strategies with **Radical DOM Pruning** for Workday, Eightfold, and Next.js SPAs (Goldman Sachs, Oracle Cloud) to bypass bot protection boundaries.
+- **📄 Native PDF Processing** — Bypass corporate firewalls and login walls by uploading a raw PDF job description directly for full-scale AI analysis.
 - **📋 JD Parsing & Team Intelligence** — AI-powered extraction of job details, including a specialized **Sub-Team Deep Dive** that identifies specific internal groups (e.g., "Ayco") for hyper-specific research.
 - **🏢 Company Intelligence** — Real-time Market Cap integration via Yahoo Finance (`yfinance`) + robust Wikipedia research with **Iterative Suffix Stripping** for complex legal names and **Relevance-Aware Redirect Handling** to prevent subsidiary data loss.
 - **💰 Salary Intelligence** — Triangulated salary estimates from DOL H1B data, JD mentions, and AI market analysis.
@@ -26,6 +27,7 @@ HireScope recently evolved from a stateless script into an intelligent, stateful
 - **Phase 2 (Data Caching)** — Eliminates redundant external API calls by caching parsed job descriptions and Wikipedia snapshots.
 - **Phase 3 (Salary Intelligence)** — Automatically extracts explicit JD salary strings to build a proprietary baseline database, prioritizing "Learned Data" over DOL H1B data.
 - **Phase 4 (Dynamic RAG Indexing)** — Intercepts sparse RAG searches. If there are `< 3` interview experiences for a company, the system live-scrapes the web and injects the new vectors directly into the ChromaDB memory mid-flight.
+- **Phase 5 (Testing & Benchmarking)** — Parameter-driven evaluation suite orchestrates deterministic testing across Glassdoor tools, Company Intel gathering, and agent reliability.
 
 ## 🏗️ Architecture
 
@@ -115,6 +117,14 @@ npm run dev
 
 Navigate to **http://localhost:5173** and paste a job URL to analyze!
 
+### 6. Remote Access (Optional)
+
+To access the UI from a mobile device or external network, you can use [Pinggy](https://pinggy.io) to tunnel the local frontend instantly:
+
+```bash
+ssh -p 443 -o StrictHostKeyChecking=no -R0:localhost:5173 a.pinggy.io
+```
+
 ## 🔧 Supported Job Boards
 
 | Board | Method | Status |
@@ -135,9 +145,12 @@ Navigate to **http://localhost:5173** and paste a job URL to analyze!
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/analyze` | Submit a job URL for analysis |
+| `POST` | `/api/analyze/pdf` | Submit a PDF job description for analysis (multipart/form-data) |
 | `GET` | `/api/jobs` | List all analyzed jobs |
 | `GET` | `/api/jobs/{id}` | Get job status & progress |
 | `GET` | `/api/jobs/{id}/report` | Get the HTML report |
+| `POST` | `/api/jobs/{id}/feedback`| Submit thumbs up/down feedback for AI components |
+| `POST` | `/api/rag/query` | Direct query endpoint for testing the local ChromaDB RAG |
 | `GET` | `/health` | Health check |
 
 ## 🧪 Analysis Pipeline
