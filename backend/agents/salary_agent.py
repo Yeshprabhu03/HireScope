@@ -8,6 +8,7 @@ import json
 import logging
 import re
 from typing import Optional
+from pydantic import BaseModel, Field
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -96,6 +97,14 @@ async def estimate_market_salary_with_claude(
     try:
         from utils.llm import llm_generate_json
 
+        class SalaryMarketEstimate(BaseModel):
+            min: int = Field(description="Integer annual base salary USD (minimum of range)")
+            max: int = Field(description="Integer annual base salary USD (maximum of range)")
+            median: int = Field(description="Integer annual base salary USD (median of range)")
+            base_range: str = Field(description="String like '$X - $Y'")
+            total_comp_range: str = Field(description="String including equity/bonus")
+            notes: str = Field(description="Brief 1-2 sentence explanation of reasoning")
+
         context_block = f"\n\nContext - Raw Job Description Snippet:\n{jd_text_snippet}" if jd_text_snippet else ""
 
         prompt = f"""You are a compensation expert. Estimate the salary range for this position.
@@ -104,19 +113,9 @@ Job Title: {job_title}
 Company: {company}
 Location: {location}
 Seniority: {seniority}
-Key Skills: {", ".join(skills[:10])}{context_block}
+Key Skills: {", ".join(skills[:10])}{context_block}"""
 
-Return ONLY valid JSON with this structure:
-{{
-  "min": <integer annual salary USD>,
-  "max": <integer annual salary USD>,
-  "median": <integer annual salary USD>,
-  "base_range": "<string like '$X - $Y'>",
-  "total_comp_range": "<string including equity/bonus>",
-  "notes": "<brief 1-2 sentence explanation>"
-}}"""
-
-        return await llm_generate_json(prompt, provider=provider, max_tokens=500, temperature=0.0)
+        return await llm_generate_json(prompt, provider=provider, max_tokens=500, temperature=0.0, response_schema=SalaryMarketEstimate)
 
     except Exception as e:
         logger.error(f"Gemini salary estimation failed: {e}", exc_info=True)

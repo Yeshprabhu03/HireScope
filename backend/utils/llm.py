@@ -7,6 +7,9 @@ import logging
 import time
 from typing import Literal
 
+from pydantic import BaseModel
+from typing import Literal, Optional, Type, Union
+
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 logger = logging.getLogger(__name__)
@@ -54,13 +57,13 @@ def _get_openai_client():
     # Optional: we can be specific about which exceptions to retry on if we want,
     # but retrying on all general exceptions is safe for LLM calls.
 )
-async def llm_generate(prompt: str, provider: Provider = "gemini", max_tokens: int = 2000, temperature: float = 0.0) -> str:
+async def llm_generate(prompt: str, provider: Provider = "gemini", max_tokens: int = 2000, temperature: float = 0.0, response_schema: Optional[Union[Type[BaseModel], dict]] = None) -> str:
     """
     Send a prompt to the selected LLM provider and return the raw text response.
     Retries automatically on failures (e.g. rate limits, 500s) with exponential backoff.
     """
     if provider == "gemini":
-        return await _generate_gemini(prompt, max_tokens, temperature)
+        return await _generate_gemini(prompt, max_tokens, temperature, response_schema)
     elif provider == "anthropic":
         return await _generate_anthropic(prompt, max_tokens, temperature)
     elif provider == "openai":
@@ -69,13 +72,19 @@ async def llm_generate(prompt: str, provider: Provider = "gemini", max_tokens: i
         raise ValueError(f"Unknown provider: {provider}")
 
 
-async def _generate_gemini(prompt: str, max_tokens: int, temperature: float) -> str:
+async def _generate_gemini(prompt: str, max_tokens: int, temperature: float, response_schema: Optional[Union[Type[BaseModel], dict]] = None) -> str:
     import google.generativeai as genai
     model = _get_gemini_model()
-    generation_config = genai.types.GenerationConfig(
-        max_output_tokens=max_tokens,
-        temperature=temperature,
-    )
+
+    generation_config_kwargs = {
+        "max_output_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    if response_schema:
+        generation_config_kwargs["response_mime_type"] = "application/json"
+        generation_config_kwargs["response_schema"] = response_schema
+
+    generation_config = genai.types.GenerationConfig(**generation_config_kwargs)
     response = await model.generate_content_async(prompt, generation_config=generation_config)
     if not response or not response.text:
         raise ValueError("Gemini returned empty response")
@@ -107,12 +116,12 @@ async def _generate_openai(prompt: str, max_tokens: int, temperature: float) -> 
     return response.choices[0].message.content.strip()
 
 
-async def llm_generate_json(prompt: str, provider: Provider = "gemini", max_tokens: int = 4000, temperature: float = 0.0) -> dict:
+async def llm_generate_json(prompt: str, provider: Provider = "gemini", max_tokens: int = 4000, temperature: float = 0.0, response_schema: Optional[Union[Type[BaseModel], dict]] = None) -> dict:
     """
     Send a prompt to the selected provider and parse the JSON response.
     Handles markdown code blocks and potential truncation.
     """
-    raw = await llm_generate(prompt, provider, max_tokens, temperature)
+    raw = await llm_generate(prompt, provider, max_tokens, temperature, response_schema)
 
     # Strip markdown code blocks if present
     processed = raw.strip()

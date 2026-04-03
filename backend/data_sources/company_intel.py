@@ -252,6 +252,29 @@ async def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = No
     try:
         from config import settings
         from utils.llm import llm_generate_json
+        from pydantic import BaseModel, Field
+        from typing import List
+
+        class RevenueBreakdown(BaseModel):
+            division: str = Field(description="Name of major business division")
+            revenue_percentage: str = Field(description="Approx % of total revenue, e.g. '70%'")
+
+        class CompanyIntel(BaseModel):
+            description: str = Field(description="A 2-3 sentence overview of the company's main business and global significance.")
+            ceo: str = Field(description="current CEO full name, or 'N/A' if unknown")
+            founded: str = Field(description="founding year, or 'N/A'")
+            headquarters: str = Field(description="City, State/Country, or 'N/A'")
+            employees: str = Field(description="approximate headcount, e.g. '~9,000' or 'N/A'")
+            ticker: str = Field(description="Stock ticker symbol if public, e.g. 'AAPL', 'MSFT', 'ADBE', or 'N/A' if private/unknown")
+            industry: str = Field(description="primary industry sector")
+            business_model: str = Field(description="1-2 sentences about how they make money")
+            target_team_confirmed: str = Field(description="Reflect the requested sub_team or 'N/A'")
+            business_unit_overview: str = Field(description="MANDATORY: If target_team_confirmed is not N/A, describe the specific group history and specialty.")
+            linkedin_networking: str = Field(description="1-2 sentences advising the user which specific organizational teams, directors, or managers they should try connecting with on LinkedIn for the role")
+            culture_highlights: List[str] = Field(description="3-4 key culture traits based on known reputation")
+            recent_news: List[str] = Field(description="2-3 real, verifiable recent events about this company")
+            revenue_breakdown: List[RevenueBreakdown] = Field(description="Revenue breakdown by division")
+            org_chart_mermaid: str = Field(description="MANDATORY: A strictly valid Mermaid.js 'graph TD' string showing the hierarchy from top company levels down to business unit and role. Use ONLY [Name] for nodes. DO NOT wrap in code blocks. Example: 'graph TD; Google[Google]-->Ads[Ads Division]; Ads-->Eng[Engineering];'")
 
         bu = parsed_jd.get('business_unit', 'N/A') if parsed_jd else 'N/A'
         team_context = f" and specific team/brand '{sub_team}'" if sub_team else ""
@@ -274,30 +297,10 @@ Research Context - Target Sub-Team (Wikipedia):
 
 {bu_context}{jd_context}
 
-Return ONLY valid JSON with this exact structure (no markdown, no extra text):
-{{
-  "description": "<A 2-3 sentence overview of the company's main business and global significance.>",
-  "ceo": "<current CEO full name, or 'N/A' if unknown>",
-  "founded": "<founding year, or 'N/A'>",
-  "headquarters": "<City, State/Country, or 'N/A'>",
-  "employees": "<approximate headcount, e.g. '~9,000' or 'N/A'>",
-  "ticker": "<Stock ticker symbol if public, e.g. 'AAPL', 'MSFT', 'ADBE', or 'N/A' if private/unknown>",
-  "industry": "<primary industry sector>",
-  "business_model": "<1-2 sentences about how they make money>",
-  "target_team_confirmed": "{sub_team or 'N/A'}",
-  "business_unit_overview": "<MANDATORY: If 'target_team_confirmed' is not 'N/A', you MUST research and describe the specific '{sub_team}' group at {company}. Explain its history (e.g. Ayco was acquired in 2003), its specialized services, and why it is unique within the broader {company} structure.>",
-  "linkedin_networking": "<1-2 sentences advising the user which specific organizational teams, directors, or managers they should try connecting with on LinkedIn for the '{role}' role>",
-  "culture_highlights": ["<3-4 key culture traits based on known reputation>"],
-  "recent_news": ["<2-3 real, verifiable recent events about this company>"],
-  "revenue_breakdown": [
-    {{"division": "<Name of major business division>", "revenue_percentage": "<Approx % of total revenue, e.g. '70%'>"}}
-  ],
-  "org_chart_mermaid": "<MANDATORY: A strictly valid Mermaid.js 'graph TD' string showing the hierarchy from top company levels down to business unit and role. Use ONLY [Name] for nodes. DO NOT wrap in code blocks. Example: 'graph TD; Google[Google]-->Ads[Ads Division]; Ads-->Eng[Engineering];'>"
-}}
 Use 'N/A' for any field you are not confident about. Do NOT invent data. If a revenue breakdown or org chart cannot be reasonably estimated, provide empty arrays or empty strings.
 IMPORTANT: The org_chart_mermaid must be a single string without markdown formatting."""
 
-            ai_data = await llm_generate_json(prompt, provider=provider, max_tokens=900, temperature=0.0)
+            ai_data = await llm_generate_json(prompt, provider=provider, max_tokens=900, temperature=0.0, response_schema=CompanyIntel)
 
             # Cleanup Mermaid string
             if "org_chart_mermaid" in ai_data:

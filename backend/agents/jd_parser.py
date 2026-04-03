@@ -170,7 +170,7 @@ Rules:
 Input:
 {clean_text}"""
 
-        parsed_data = await llm_generate_json(prompt, provider=provider, max_tokens=8000, temperature=0.0)
+        parsed_data = await llm_generate_json(prompt, provider=provider, max_tokens=8000, temperature=0.0, response_schema=ParsedJD)
 
         # Inject the raw text snippet back into the payload so downstream agents can read the actual JD!
         # We limit it to ~3000 characters to keep tokens low while providing massive context

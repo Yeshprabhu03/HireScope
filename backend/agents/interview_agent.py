@@ -3,7 +3,8 @@ Interview Agent: uses RAG + Claude to generate interview intelligence for a comp
 """
 import json
 import logging
-from typing import Optional
+from typing import Optional, List, Literal
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,27 @@ async def analyze_interviews(
     try:
         from rag.retriever import retrieve_relevant_experiences
         from utils.llm import llm_generate_json
+
+        class StudyGuideSubsection(BaseModel):
+            title: str = Field(description="Title of the subsection")
+            importance: Literal["CRITICAL", "HIGH", "MED"] = Field(description="Importance of this topic")
+            bullet_points: List[str] = Field(description="Strictly factual, highly technical, verbatim knowledge extraction. No generic advice. Cite the JD strictly.")
+            jd_justification: str = Field(description="Explain exactly which line in the JD or company intel justifies this subsection")
+
+        class StudyGuideSection(BaseModel):
+            title: str = Field(description="High level category title (e.g., Data Platform & Engineering, Product Strategy)")
+            subsections: List[StudyGuideSubsection] = Field(description="Detailed subsections for this category")
+
+        class InterviewGuide(BaseModel):
+            rounds: List[str] = Field(description="Chronological sequence of interview rounds")
+            technical_questions: List[str] = Field(description="5-7 technical questions/topics, prefixed with 'Reported:' or 'Likely Topic:'")
+            behavioral_questions: List[str] = Field(description="4-5 behavioral questions/topics, prefixed with 'Reported:' or 'Likely Topic:'")
+            difficulty: Literal["easy", "medium", "hard"] = Field(description="Overall difficulty level")
+            tips: List[str] = Field(description="5 actionable preparation tips, strictly factual without generic fluff")
+            study_guide: List[StudyGuideSection] = Field(description="Exhaustive study guide divided by technical areas")
+            process_overview: str = Field(description="2-3 sentence overview of the process. MUST explicitly mention company-specific details")
+            identified_sources: List[str] = Field(description="List of platforms identified from data")
+            source: str = Field(description="Synthesis source label")
 
         # Step 1: Classify Role to enforce strict boundary separation
         role_category = categorize_role(role)
@@ -246,37 +268,9 @@ Behavioral Experiences:
 {behavioral_context}
 
 Process Experiences:
-{process_context}
+{process_context}"""
 
-Return ONLY valid JSON with this structure:
-{{
-  "rounds": ["<EXTRACT the chronological sequence of interview rounds (e.g. 'Initial Recruiter Screen', 'Technical Phone Interview', 'Onsite Loop/Superday'). Use the exact specific names mentioned in the text if available.>"],
-  "technical_questions": ["<5-7 questions/topics, prefixed with 'Reported:' or 'Likely Topic:'>"],
-  "behavioral_questions": ["<4-5 questions/topics, prefixed with 'Reported:' or 'Likely Topic:'>"],
-  "difficulty": "<easy|medium|hard>",
-  "tips": ["<5 actionable preparation tips, strictly factual without generic fluff>"],
-  "study_guide": [
-    {{
-      "title": "<e.g., Data Platform & Engineering, Product Strategy, Privacy & Compliance>",
-      "subsections": [
-        {{
-          "title": "<e.g., Core Data Architecture — Know Cold>",
-          "importance": "<CRITICAL|HIGH|MED>",
-          "bullet_points": [
-             "<Strictly factual, highly technical, verbatim knowledge extraction. No generic advice. Cite the JD strictly.>",
-             "<Another strictly factual technical or behavioral insight...>"
-          ],
-          "jd_justification": "<Explain exactly which line in the JD or company intel justifies this subsection>"
-        }}
-      ]
-    }}
-  ],
-  "process_overview": "<2-3 sentence overview. MUST explicitly mention company-specific details (e.g., 'HireVue', 'Superday') found in experiences. DO NOT write generic filler.>",
-  "identified_sources": ["<list of platforms identified from data>"],
-  "source": "{f"Source: {verified_count} verified {'/'.join(list(set(sources_found))) if sources_found else 'experiences'}." if has_verified_data else 'Trusted Synthesis (JD Context & Industry Patterns)'}"
-}}"""
-
-        result = await llm_generate_json(prompt, provider=provider, max_tokens=6000, temperature=0.1)
+        result = await llm_generate_json(prompt, provider=provider, max_tokens=6000, temperature=0.1, response_schema=InterviewGuide)
         result["confidence_score"] = confidence_score
         result["source_count"] = verified_count
         result["data_warning"] = not has_verified_data
