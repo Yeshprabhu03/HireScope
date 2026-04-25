@@ -179,6 +179,82 @@ def _mock_company_intel(company: str) -> dict:
     return mock
 
 
+async def fetch_wikidata_employees(wikipedia_page_title: str) -> Optional[str]:
+    """
+    Fetch up-to-date employee count from Wikidata (P1128) for a given Wikipedia page title.
+    Returns a formatted string like '~2,500' or None if unavailable.
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            # Step 1: Get Wikidata item ID (QID) from the Wikipedia page
+            r = await client.get(
+                "https://en.wikipedia.org/w/api.php",
+                params={
+                    "action": "query",
+                    "titles": wikipedia_page_title,
+                    "prop": "pageprops",
+                    "ppprop": "wikibase_item",
+                    "format": "json",
+                },
+                headers={"User-Agent": "HireScope/1.0"},
+                timeout=10,
+            )
+            pages = r.json().get("query", {}).get("pages", {})
+            qid = None
+            for page in pages.values():
+                qid = page.get("pageprops", {}).get("wikibase_item")
+                break
+
+            if not qid:
+                logger.info(f"No Wikidata QID found for Wikipedia page '{wikipedia_page_title}'")
+                return None
+
+            logger.info(f"Found Wikidata QID {qid} for '{wikipedia_page_title}'")
+
+            # Step 2: Fetch P1128 (number of employees) claim from Wikidata
+            r2 = await client.get(
+                "https://www.wikidata.org/w/api.php",
+                params={
+                    "action": "wbgetentities",
+                    "ids": qid,
+                    "props": "claims",
+                    "format": "json",
+                },
+                headers={"User-Agent": "HireScope/1.0"},
+                timeout=10,
+            )
+            claims = r2.json().get("entities", {}).get(qid, {}).get("claims", {})
+            emp_claims = claims.get("P1128", [])
+            if not emp_claims:
+                logger.info(f"Wikidata has no P1128 (employees) claim for QID {qid}")
+                return None
+
+            # Pick the most recent preferred or normal rank claim
+            best = None
+            for claim in emp_claims:
+                if claim.get("rank") == "preferred":
+                    best = claim
+                    break
+            if best is None:
+                best = emp_claims[-1]  # Fall back to last entry (usually most recent)
+
+            amount = (
+                best.get("mainsnak", {})
+                    .get("datavalue", {})
+                    .get("value", {})
+                    .get("amount")
+            )
+            if amount:
+                n = int(float(str(amount).lstrip("+")))
+                formatted = f"{n:,}"
+                logger.info(f"Wikidata employee count for '{wikipedia_page_title}': {formatted}")
+                return formatted
+
+    except Exception as e:
+        logger.warning(f"Wikidata employees lookup failed for '{wikipedia_page_title}': {e}")
+    return None
+
+
 async def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, sub_team: str = None, team_context: str = None, use_mock: bool = False, provider: str = "gemini") -> dict:
     """
     Fetch comprehensive company intelligence from Wikipedia and Gemini.
@@ -220,10 +296,11 @@ async def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = No
     except Exception as e:
         logger.warning(f"Could not fetch Glassdoor data for '{company}': {e}")
 
-    # 1. Base info via Wikipedia
+    # 1. Base info via Wikipedia + Wikidata structured employee count
     # We now fetch TWO summaries if a sub-team is present to avoid one overwriting the other
     main_wiki = None
     sub_wiki = None
+    wikidata_employees: Optional[str] = None
 
     try:
         # Fetch individual summaries
@@ -236,6 +313,13 @@ async def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = No
             intel["wikipedia_url"] = main_wiki.get("wikipedia_url", "")
             intel["source"] = "Wikipedia API"
             logger.info(f"Fetched parent Wikipedia summary for '{company}'")
+
+            # Derive page title from the Wikipedia URL for the Wikidata lookup
+            wiki_url = main_wiki.get("wikipedia_url", "")
+            page_title = wiki_url.rstrip("/").split("/wiki/")[-1].replace("_", " ") if "/wiki/" in wiki_url else resolve_company_name(company)
+            wikidata_employees = await fetch_wikidata_employees(page_title)
+            if wikidata_employees:
+                intel["employees"] = wikidata_employees
 
         if sub_wiki:
             # We don't overwrite the main description, but we log success
@@ -348,6 +432,10 @@ IMPORTANT: The org_chart_mermaid must be a single string without markdown format
 
             ai_data["market_cap"] = market_cap_str
             intel.update(ai_data)
+            # Always trust Wikidata employee count over Gemini's inference
+            if wikidata_employees:
+                intel["employees"] = wikidata_employees
+                logger.info(f"Restored authoritative Wikidata employee count: {wikidata_employees}")
             logger.info(f"Enhanced company intel for '{company}' with Gemini")
 
     except Exception as e:
