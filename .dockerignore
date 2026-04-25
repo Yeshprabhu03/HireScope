@@ -1,0 +1,58 @@
+# Ignore dev/local artifacts but keep everything needed for the build
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+.eggs/
+htmlcov/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Environment files (never bake secrets into the image)
+.env
+backend/.env
+
+# Node / Frontend (only the dist is needed; node_modules is rebuilt inside Docker)
+frontend/node_modules/
+frontend/.env*
+
+# ChromaDB runtime data
+backend/chroma_db/
+chroma_db/
+
+# SQLite runtime DB
+*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Git metadata (not needed in the image)
+.git/
+.github/
+
+# Large data files — keep only the small sample CSV
+data/*.csv
+!data/h1b_data.csv
+
+# Test / scratch files
+test_*.py
+*_test.py
+backend/scripts/
+backend/pgdata/
+
+# NOTE: do NOT exclude *.html here — backend/templates/report.html must be copied
