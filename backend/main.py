@@ -23,7 +23,9 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 from fastapi import Request
 
 async def get_api_key(request: Request, api_key: str = Security(api_key_header)):
-    # logger.debug(f"Headers: {dict(request.headers)}")
+    # Allow health check and root without auth (needed for Railway health checks)
+    if request.url.path in ("/health", "/ping", "/"):
+        return "public"
 
     if not api_key:
         raise HTTPException(
