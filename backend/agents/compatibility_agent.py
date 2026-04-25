@@ -85,7 +85,7 @@ async def analyze_compatibility(
     gap_analysis = await llm_generate_json(
         gap_prompt,
         provider=provider,
-        max_tokens=800,
+        max_tokens=1500,
         temperature=0.1,
         response_schema=ResumeAITailor
     )
