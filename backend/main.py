@@ -56,7 +56,11 @@ def _get_jobs_lock():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("HireScope API starting up...")
-    await init_db()
+    try:
+        await init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.warning(f"Database init failed (non-fatal): {e}")
     # Pre-warm H1B data so first analysis has no cold-load penalty
     try:
         from data_sources.dol_h1b import load_h1b_data
