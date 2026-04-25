@@ -3,7 +3,6 @@ import { API_HEADERS } from '../api_config'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
-  Download,
   FileText,
   Printer,
   ChevronRight,
