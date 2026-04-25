@@ -21,7 +21,7 @@ WORKDIR /app
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend source (cache-bust: v2)
+# Copy backend source (cache-bust: v3)
 COPY backend/ ./backend/
 
 # Copy data files (H1B CSV + interview corpus)
