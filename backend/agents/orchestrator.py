@@ -29,6 +29,8 @@ class HireScopeState(TypedDict):
     company_intelligence: Optional[Dict[str, Any]]
     salary_intelligence: Optional[Dict[str, Any]]
     interview_intelligence: Optional[Dict[str, Any]]
+    compatibility_intelligence: Optional[Dict[str, Any]]
+    skill_gap_analysis: Optional[Dict[str, Any]]
 
     # Final output and status
     html_report: str
@@ -39,6 +41,7 @@ class HireScopeState(TypedDict):
     use_mock: bool
     provider: str
     model_display_name: str
+    user_context: Optional[str]
 
     # Execution control
     browser_retried: bool
@@ -237,6 +240,32 @@ async def fetch_interviews_node(state: HireScopeState) -> dict:
         return {"interview_intelligence": {"error": str(e), "questions": []}}
 
 
+async def fetch_compatibility_node(state: HireScopeState) -> dict:
+    """Analyze job compatibility and skill gaps."""
+    jd = state.get("parsed_jd") or {}
+    company_intel = state.get("company_intelligence") or {}
+    logger.info(f"[{state['job_id']}] Evaluating compatibility for '{jd.get('job_title')}'")
+    try:
+        from agents.compatibility_agent import analyze_compatibility
+        use_mock = state.get("use_mock", False)
+        provider = state.get("provider", "gemini")
+        user_ctx = state.get("user_context")
+
+        res = await analyze_compatibility(
+            parsed_jd=jd,
+            company_intel=company_intel,
+            user_context=user_ctx,
+            provider=provider
+        )
+        return {
+            "compatibility_intelligence": res.get("compatibility"),
+            "skill_gap_analysis": res.get("gap_analysis")
+        }
+    except Exception as e:
+        logger.error(f"fetch_compatibility_node failed: {e}", exc_info=True)
+        return {"compatibility_intelligence": {"error": str(e)}, "skill_gap_analysis": {}}
+
+
 async def parallel_intel_node(state: HireScopeState) -> dict:
     """
     Tier 2 optimization: run company intelligence and salary analysis in parallel.
@@ -275,6 +304,8 @@ async def generate_report_node(state: HireScopeState) -> dict:
             company_intel=state.get("company_intelligence") or {},
             salary_intel=state.get("salary_intelligence") or {},
             interview_intel=state.get("interview_intelligence") or {},
+            compatibility_intel=state.get("compatibility_intelligence") or {},
+            skill_gap_intel=state.get("skill_gap_analysis") or {},
             job_id=state.get("job_id", ""),
             model_name=state.get("model_display_name", "AI Assistant"),
         )
@@ -325,6 +356,7 @@ workflow.add_node("parse_jd", parse_jd_node)
 workflow.add_node("browser_retry", browser_retry_node)
 workflow.add_node("parallel_intel", parallel_intel_node)  # company + salary in parallel
 workflow.add_node("fetch_interviews", fetch_interviews_node)
+workflow.add_node("fetch_compatibility", fetch_compatibility_node)
 workflow.add_node("generate_report", generate_report_node)
 
 workflow.set_entry_point("fetch_html")
@@ -344,7 +376,8 @@ workflow.add_conditional_edges(
 
 workflow.add_edge("browser_retry", "parse_jd")
 workflow.add_edge("parallel_intel", "fetch_interviews")  # interviews wait for both
-workflow.add_edge("fetch_interviews", "generate_report")
+workflow.add_edge("fetch_interviews", "fetch_compatibility")
+workflow.add_edge("fetch_compatibility", "generate_report")
 workflow.add_edge("generate_report", END)
 
 app = workflow.compile()
@@ -361,6 +394,7 @@ PIPELINE_STEPS_LABELS = {
     "fetch_company": "🏢 Gathering company intelligence...",
     "fetch_salary": "💰 Analyzing salary data...",
     "fetch_interviews": "🎯 Researching interview questions...",
+    "fetch_compatibility": "⚖️ Evaluating job compatibility...",
     "generate_report": "📊 Generating your report...",
 }
 
@@ -378,7 +412,7 @@ def _update_progress_live(jobs: dict, job_id: str, node_name: str, completed: li
     }
 
 
-async def run_job_analysis(job_id: str, job_url: str, provider: str = "gemini", jobs: dict = None, uploaded_text: str = None) -> dict:
+async def run_job_analysis(job_id: str, job_url: str, provider: str = "gemini", jobs: dict = None, uploaded_text: str = None, user_context: str = None) -> dict:
     from config import settings
 
     def get_display_name(p):
@@ -395,12 +429,15 @@ async def run_job_analysis(job_id: str, job_url: str, provider: str = "gemini", 
         "company_intelligence": None,
         "salary_intelligence": None,
         "interview_intelligence": None,
+        "compatibility_intelligence": None,
+        "skill_gap_analysis": None,
         "html_report": "",
         "status": "starting",
         "error": "",
         "use_mock": settings.USE_MOCK_DATA,
         "provider": provider,
         "model_display_name": get_display_name(provider),
+        "user_context": user_context,
         "browser_retried": False,
         "is_upload": bool(uploaded_text)
     }

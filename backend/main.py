@@ -2,9 +2,11 @@ import uuid
 import logging
 from datetime import datetime
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Security, Depends, File, UploadFile, Form
 from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, HttpUrl
 from typing import Optional, Dict, Any
 import os
@@ -87,6 +89,7 @@ class AnalyzeRequest(BaseModel):
     job_url: str
     provider: str = "gemini"
     session_id: Optional[str] = None
+    user_context: Optional[str] = None
 
 
 class RAGQueryRequest(BaseModel):
@@ -102,7 +105,7 @@ class FeedbackRequest(BaseModel):
     source_text: str
 
 
-async def run_analysis(job_id: str, job_url: str, provider: str = "gemini", uploaded_text: str = None):
+async def run_analysis(job_id: str, job_url: str, provider: str = "gemini", uploaded_text: str = None, user_context: str = None):
     """Background task: run the full LangGraph analysis pipeline."""
     try:
         jobs[job_id]["status"] = "processing"
@@ -110,7 +113,14 @@ async def run_analysis(job_id: str, job_url: str, provider: str = "gemini", uplo
 
         from agents.orchestrator import run_job_analysis
 
-        result = await run_job_analysis(job_id=job_id, job_url=job_url, provider=provider, jobs=jobs, uploaded_text=uploaded_text)
+        result = await run_job_analysis(
+            job_id=job_id,
+            job_url=job_url,
+            provider=provider,
+            jobs=jobs,
+            uploaded_text=uploaded_text,
+            user_context=user_context
+        )
 
         result_status = result.get("status", "completed")
         jobs[job_id].update(
@@ -208,7 +218,7 @@ async def analyze_job(request: AnalyzeRequest, background_tasks: BackgroundTasks
                 "percent": 0,
             },
         }
-    background_tasks.add_task(run_analysis, job_id, request.job_url, request.provider)
+    background_tasks.add_task(run_analysis, job_id, request.job_url, request.provider, None, request.user_context)
     logger.info(f"Created job_id={job_id} for url={request.job_url} with provider={request.provider}")
     return {"job_id": job_id, "status": "created"}
 
@@ -255,6 +265,24 @@ async def analyze_pdf(
     background_tasks.add_task(run_analysis, job_id, pseudo_url, provider, text)
     logger.info(f"Created job_id={job_id} for uploaded PDF={file.filename} with provider={provider}")
     return {"job_id": job_id, "status": "created"}
+
+
+@app.post("/api/utils/parse-resume")
+async def parse_resume(file: UploadFile = File(...)):
+    """Extract text from a PDF resume."""
+    import pypdf
+    import io
+    try:
+        pdf_reader = pypdf.PdfReader(io.BytesIO(await file.read()))
+        text = ""
+        for page in pdf_reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+        return {"text": text.strip()}
+    except Exception as e:
+        logger.error(f"Failed to parse resume PDF: {e}")
+        raise HTTPException(status_code=400, detail="Invalid PDF file")
 
 
 @app.get("/api/jobs/{job_id}")
@@ -444,3 +472,9 @@ async def health_check():
     )
 
     return health
+
+
+# Serve the React frontend — must be after all API routes
+_frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+if _frontend_dist.exists():
+    app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")

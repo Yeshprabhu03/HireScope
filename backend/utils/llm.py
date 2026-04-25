@@ -82,7 +82,6 @@ async def _generate_gemini(prompt: str, max_tokens: int, temperature: float, res
     }
     if response_schema:
         generation_config_kwargs["response_mime_type"] = "application/json"
-        generation_config_kwargs["response_schema"] = response_schema
 
     generation_config = genai.types.GenerationConfig(**generation_config_kwargs)
     response = await model.generate_content_async(prompt, generation_config=generation_config)
@@ -121,6 +120,14 @@ async def llm_generate_json(prompt: str, provider: Provider = "gemini", max_toke
     Send a prompt to the selected provider and parse the JSON response.
     Handles markdown code blocks and potential truncation.
     """
+    if response_schema:
+        if hasattr(response_schema, "model_json_schema"):
+            schema_json = json.dumps(response_schema.model_json_schema(), indent=2)
+        else:
+            schema_json = json.dumps(response_schema, indent=2)
+
+        prompt += f"\n\nCRITICAL RULE: You MUST return ONLY valid JSON matching exactly this schema:\n{schema_json}"
+
     raw = await llm_generate(prompt, provider, max_tokens, temperature, response_schema)
 
     # Strip markdown code blocks if present

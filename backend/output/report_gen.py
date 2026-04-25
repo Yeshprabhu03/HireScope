@@ -66,6 +66,8 @@ def generate_html_report(
     company_intel: dict,
     salary_intel: dict,
     interview_intel: dict,
+    compatibility_intel: dict = None,
+    skill_gap_intel: dict = None,
     job_id: str = "",
     analysis_start: float = 0.0,
     model_name: str = "AI Assistant",
@@ -148,6 +150,9 @@ def generate_html_report(
         "interview_tips": interview_intel.get("tips", []),
         "interview_platforms": interview_intel.get("identified_sources", []),
         "study_guide_sections": interview_intel.get("study_guide", []),
+
+        "compatibility": compatibility_intel or {},
+        "skill_gap": skill_gap_intel or {},
 
         "generated_at": datetime.now().strftime("%B %d, %Y at %I:%M %p"),
     }
