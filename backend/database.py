@@ -243,6 +243,9 @@ async def get_historical_salary(company: str, job_title: str, location: str) -> 
         # Using raw SQL for the aggregate to handle the title pattern match easily
         # PostgreSQL syntax
         from sqlalchemy import func
+        from datetime import timedelta
+        cutoff = datetime.now() - timedelta(days=730)
+        
         statement = select(
             func.count(SalaryObservation.job_url).label("obs_count"),
             func.avg(SalaryObservation.jd_salary_min).label("avg_min"),
@@ -251,7 +254,7 @@ async def get_historical_salary(company: str, job_title: str, location: str) -> 
             SalaryObservation.company == company,
             SalaryObservation.job_title.like(title_pattern),
             SalaryObservation.jd_salary_min != None,
-            SalaryObservation.observed_at > text("now() - interval '2 years'")
+            SalaryObservation.observed_at > cutoff
         )
 
         results = await session.execute(statement)
