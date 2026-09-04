@@ -351,7 +351,7 @@
       </div>
     {% endif %}
 
-    {% if company_revenue_breakdown or company_org_chart %}
+    {% if company_revenue_total or company_revenue_breakdown or company_org_chart %}
     <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--gray-200);">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <strong style="font-size: 16px; color: var(--primary);">Corporate Structure & Revenue</strong>
@@ -361,6 +361,12 @@
         </a>
         {% endif %}
       </div>
+      {% if company_revenue_total %}
+      <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;">
+        <span style="font-size: 24px; font-weight: 700; color: var(--primary);">{{ company_revenue_total }}</span>
+        <span style="font-size: 13px; color: var(--gray-500);">annual revenue{% if company_revenue_fy %} &middot; FY{{ company_revenue_fy }}{% endif %}{% if company_revenue_yoy is not none %} &middot; {{ company_revenue_yoy }}% YoY{% endif %} &middot; SEC 10-K</span>
+      </div>
+      {% endif %}
       <div class="two-col">
         {% if company_revenue_breakdown %}
         <div>
@@ -383,8 +389,10 @@
           </table>
           <p style="font-size: 11px; color: var(--gray-500); margin-top: 6px; font-style: italic;">Estimates based on recent public filings and AI analysis.</p>
         </div>
+        {% elif company_revenue_total %}
+        <div><p style='font-size: 13px; color: var(--gray-500); font-style: italic;'>Segment breakdown not separately disclosed (largely single-segment).</p></div>
         {% else %}
-        <div><p style='font-size: 13px; color: var(--gray-500); font-style: italic;'>Revenue breakdown not available.</p></div>
+        <div><p style='font-size: 13px; color: var(--gray-500); font-style: italic;'>Revenue data not available.</p></div>
         {% endif %}
 
         {% if company_org_chart %}
