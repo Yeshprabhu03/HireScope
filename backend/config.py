@@ -5,6 +5,9 @@ from pathlib import Path
 class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = "placeholder"
     OPENAI_API_KEY: str = "placeholder"
+    # Finnhub — reliable market-cap source from cloud IPs (Yahoo is 429-blocked
+    # on Railway). Get a free key at https://finnhub.io. Falls back to Yahoo.
+    FINNHUB_API_KEY: str = "placeholder"
     # OpenAI model id. Override via OPENAI_MODEL env var to use a newer model
     # without a code change.
     OPENAI_MODEL: str = "gpt-4o"

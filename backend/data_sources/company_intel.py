@@ -286,6 +286,61 @@ def resolve_ticker_from_name(company_name: str) -> Optional[str]:
     return None
 
 
+def _format_market_cap(usd: float) -> str:
+    if usd >= 1e12:
+        return f"${usd / 1e12:.2f}T"
+    if usd >= 1e9:
+        return f"${usd / 1e9:.2f}B"
+    return f"${usd / 1e6:.2f}M"
+
+
+def fetch_market_cap_finnhub(company_name: str, ticker: Optional[str] = None) -> Optional[tuple]:
+    """
+    Resolve (market_cap_str, ticker) via Finnhub, which works reliably from
+    cloud IPs (Yahoo returns 429 on Railway). Returns None if unavailable —
+    the caller then falls back to Yahoo. Requires FINNHUB_API_KEY.
+    """
+    from config import settings
+    key = settings.FINNHUB_API_KEY
+    if not key or key == "placeholder":
+        return None
+    import requests
+    try:
+        # Resolve a ticker if the LLM didn't supply one.
+        if not ticker or ticker.upper() == "N/A":
+            r = requests.get(
+                "https://finnhub.io/api/v1/search",
+                params={"q": company_name, "token": key},
+                timeout=8,
+            )
+            r.raise_for_status()
+            for item in r.json().get("result", []):
+                sym = item.get("symbol", "")
+                # Prefer plain US symbols (skip exchange-suffixed foreign listings).
+                if sym and "." not in sym and ":" not in sym:
+                    ticker = sym
+                    break
+            if not ticker or ticker.upper() == "N/A":
+                return None
+
+        # profile2.marketCapitalization is reported in MILLIONS of USD.
+        r = requests.get(
+            "https://finnhub.io/api/v1/stock/profile2",
+            params={"symbol": ticker, "token": key},
+            timeout=8,
+        )
+        r.raise_for_status()
+        data = r.json()
+        mcap_millions = data.get("marketCapitalization")
+        if mcap_millions:
+            resolved = data.get("ticker") or ticker
+            logger.info(f"Finnhub market cap for '{company_name}' ({resolved}): {mcap_millions}M USD")
+            return (_format_market_cap(mcap_millions * 1e6), resolved)
+    except Exception as e:
+        logger.warning(f"Finnhub market cap lookup failed for '{company_name}' ({ticker}): {e}")
+    return None
+
+
 async def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, sub_team: str = None, team_context: str = None, use_mock: bool = False, provider: str = "gemini") -> dict:
     """
     Fetch comprehensive company intelligence from Wikipedia and Gemini.
@@ -498,35 +553,39 @@ IMPORTANT: The org_chart_mermaid must be a single string without markdown format
                     ai_data["ticker"] = ticker
                 logger.info(f"Using cached market cap for '{company}': {market_cap_str}")
             else:
-                # The LLM misses tickers for companies that went public after its
-                # training cutoff — resolve from the company name via live search.
-                if not ticker or ticker.upper() == "N/A":
-                    resolved = resolve_ticker_from_name(company)
-                    if resolved:
-                        ticker = resolved
-                        ai_data["ticker"] = resolved
                 # Default to a neutral "N/A" — we can't assert a company is
                 # private just because a (rate-limited) lookup gave no ticker.
                 market_cap_str = "N/A"
-                if ticker and ticker.upper() != "N/A":
-                    try:
-                        import yfinance as yf
-                        @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5), reraise=True)
-                        def _fetch_mcap(t):
-                            stock = yf.Ticker(t)
-                            return stock.info.get("marketCap")
 
-                        mcap = _fetch_mcap(ticker)
-                        if mcap:
-                            if mcap >= 1e12:
-                                market_cap_str = f"${mcap / 1e12:.2f}T"
-                            elif mcap >= 1e9:
-                                market_cap_str = f"${mcap / 1e9:.2f}B"
-                            else:
-                                market_cap_str = f"${mcap / 1e6:.2f}M"
-                            intel["source"] = "Wikipedia + Yahoo Finance"
-                    except Exception as e:
-                        logger.warning(f"yfinance failed to fetch market cap for {ticker}: {e}")
+                # Primary source: Finnhub (reliable from cloud IPs). It also
+                # resolves the ticker for post-cutoff IPOs the LLM misses.
+                fh = fetch_market_cap_finnhub(company, ticker)
+                if fh:
+                    market_cap_str, ticker = fh
+                    ai_data["ticker"] = ticker
+                    intel["source"] = "Wikipedia + Finnhub"
+
+                # Fallback: Yahoo (works locally; 429-limited on Railway).
+                if market_cap_str == "N/A":
+                    if not ticker or ticker.upper() == "N/A":
+                        resolved = resolve_ticker_from_name(company)
+                        if resolved:
+                            ticker = resolved
+                            ai_data["ticker"] = resolved
+                    if ticker and ticker.upper() != "N/A":
+                        try:
+                            import yfinance as yf
+                            @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5), reraise=True)
+                            def _fetch_mcap(t):
+                                stock = yf.Ticker(t)
+                                return stock.info.get("marketCap")
+
+                            mcap = _fetch_mcap(ticker)
+                            if mcap:
+                                market_cap_str = _format_market_cap(mcap)
+                                intel["source"] = "Wikipedia + Yahoo Finance"
+                        except Exception as e:
+                            logger.warning(f"yfinance failed to fetch market cap for {ticker}: {e}")
 
             ai_data["market_cap"] = market_cap_str
             intel.update(ai_data)
