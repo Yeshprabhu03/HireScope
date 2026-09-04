@@ -67,7 +67,7 @@ async def llm_generate(prompt: str, provider: Provider = "gemini", max_tokens: i
     elif provider == "anthropic":
         return await _generate_anthropic(prompt, max_tokens, temperature)
     elif provider == "openai":
-        return await _generate_openai(prompt, max_tokens, temperature)
+        return await _generate_openai(prompt, max_tokens, temperature, response_schema)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -104,14 +104,25 @@ async def _generate_anthropic(prompt: str, max_tokens: int, temperature: float) 
     return response.content[0].text.strip()
 
 
-async def _generate_openai(prompt: str, max_tokens: int, temperature: float) -> str:
+async def _generate_openai(prompt: str, max_tokens: int, temperature: float, response_schema: Optional[Union[Type[BaseModel], dict]] = None) -> str:
     client = _get_openai_client()
-    response = await client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
+    from config import settings
+    if settings.OPENAI_API_KEY == "placeholder":
+        raise ValueError("OpenAI API key not configured")
+
+    kwargs = {
+        "model": settings.OPENAI_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    # When a JSON schema is requested, force JSON mode. This requires the word
+    # "json" to appear in the prompt — llm_generate_json already appends the
+    # schema instructions, so that condition is satisfied.
+    if response_schema:
+        kwargs["response_format"] = {"type": "json_object"}
+
+    response = await client.chat.completions.create(**kwargs)
     return response.choices[0].message.content.strip()
 
 

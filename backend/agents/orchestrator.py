@@ -412,7 +412,7 @@ def _update_progress_live(jobs: dict, job_id: str, node_name: str, completed: li
     }
 
 
-async def run_job_analysis(job_id: str, job_url: str, provider: str = "gemini", jobs: dict = None, uploaded_text: str = None, user_context: str = None) -> dict:
+async def run_job_analysis(job_id: str, job_url: str, provider: str = "openai", jobs: dict = None, uploaded_text: str = None, user_context: str = None) -> dict:
     from config import settings
 
     def get_display_name(p):
