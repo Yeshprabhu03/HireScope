@@ -327,41 +327,77 @@ async def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = No
     except Exception as e:
         logger.warning(f"Could not fetch Glassdoor data for '{company}': {e}")
 
+    # Company-level facts (Wikipedia/Wikidata/market cap) are role-independent, so
+    # cache them by company. Analyzing several roles at the same company then skips
+    # these external fetches and only re-runs the role-specific LLM enrichment.
+    from datetime import datetime, timedelta
+    from database import get_company_snapshot, save_company_snapshot
+    facts_key = f"facts::{company}"
+    cached_facts = None
+    if company and company != "Unknown":
+        try:
+            snap = await get_company_snapshot(facts_key)
+            if snap and snap.get("data"):
+                raw = snap.get("snapshot_date")
+                d = raw if isinstance(raw, datetime) else (datetime.fromisoformat(raw) if raw else None)
+                if d and datetime.now() - d < timedelta(days=30):
+                    cached_facts = snap["data"]
+                    logger.info(f"Using cached company-level facts for '{company}'")
+        except Exception as e:
+            logger.warning(f"Company facts cache read failed for '{company}': {e}")
+
     # 1. Base info via Wikipedia + Wikidata structured employee count
     # We now fetch TWO summaries if a sub-team is present to avoid one overwriting the other
     main_wiki = None
     sub_wiki = None
     wikidata_employees: Optional[str] = None
 
-    try:
-        # Fetch individual summaries
-        main_wiki = await fetch_wikipedia_summary(company)
+    if cached_facts:
+        # Reuse role-independent facts; only the (role-specific) sub-team summary
+        # is still fetched live when a sub_team is present.
+        intel["description"] = cached_facts.get("description") or intel["description"]
+        intel["wikipedia_url"] = cached_facts.get("wikipedia_url", "")
+        intel["source"] = cached_facts.get("source", "Wikipedia API")
+        wikidata_employees = cached_facts.get("employees")
+        if wikidata_employees:
+            intel["employees"] = wikidata_employees
+        # Reconstruct main_wiki so the LLM prompt still has the company description
+        main_wiki = {"description": intel["description"], "wikipedia_url": intel.get("wikipedia_url", "")}
         if sub_team and sub_team != "N/A":
-            sub_wiki = await fetch_wikipedia_summary(company, sub_team=sub_team)
+            try:
+                sub_wiki = await fetch_wikipedia_summary(company, sub_team=sub_team)
+            except Exception as e:
+                logger.warning(f"Sub-team Wikipedia fetch failed: {e}")
+    else:
+        try:
+            # Fetch individual summaries
+            main_wiki = await fetch_wikipedia_summary(company)
+            if sub_team and sub_team != "N/A":
+                sub_wiki = await fetch_wikipedia_summary(company, sub_team=sub_team)
 
-        if main_wiki:
-            intel["description"] = main_wiki.get("description", "")
-            intel["wikipedia_url"] = main_wiki.get("wikipedia_url", "")
-            intel["source"] = "Wikipedia API"
-            logger.info(f"Fetched parent Wikipedia summary for '{company}'")
+            if main_wiki:
+                intel["description"] = main_wiki.get("description", "")
+                intel["wikipedia_url"] = main_wiki.get("wikipedia_url", "")
+                intel["source"] = "Wikipedia API"
+                logger.info(f"Fetched parent Wikipedia summary for '{company}'")
 
-            # Derive page title from the Wikipedia URL for the Wikidata lookup
-            wiki_url = main_wiki.get("wikipedia_url", "")
-            page_title = wiki_url.rstrip("/").split("/wiki/")[-1].replace("_", " ") if "/wiki/" in wiki_url else resolve_company_name(company)
-            wikidata_employees = await fetch_wikidata_employees(page_title)
-            if wikidata_employees:
-                intel["employees"] = wikidata_employees
+                # Derive page title from the Wikipedia URL for the Wikidata lookup
+                wiki_url = main_wiki.get("wikipedia_url", "")
+                page_title = wiki_url.rstrip("/").split("/wiki/")[-1].replace("_", " ") if "/wiki/" in wiki_url else resolve_company_name(company)
+                wikidata_employees = await fetch_wikidata_employees(page_title)
+                if wikidata_employees:
+                    intel["employees"] = wikidata_employees
 
-        if sub_wiki:
-            # We don't overwrite the main description, but we log success
-            logger.info(f"Fetched sub-team Wikipedia summary for '{sub_team}'")
+            if sub_wiki:
+                # We don't overwrite the main description, but we log success
+                logger.info(f"Fetched sub-team Wikipedia summary for '{sub_team}'")
 
-        if not main_wiki and not sub_wiki:
+            if not main_wiki and not sub_wiki:
+                intel["description"] = f"A prominent company in its sector."
+                logger.warning(f"Wikipedia fetch failed for both parent and sub-team.")
+        except Exception as e:
+            logger.warning(f"Wikipedia fetch failed: {e}")
             intel["description"] = f"A prominent company in its sector."
-            logger.warning(f"Wikipedia fetch failed for both parent and sub-team.")
-    except Exception as e:
-        logger.warning(f"Wikipedia fetch failed: {e}")
-        intel["description"] = f"A prominent company in its sector."
 
     # 2. Extract deep metrics and networking targets with LLM
     try:
@@ -450,45 +486,70 @@ IMPORTANT: The org_chart_mermaid must be a single string without markdown format
                 ai_data["org_chart_mermaid"] = m_str
                 logger.info(f"Generated Sanitized Mermaid: {m_str}")
 
-            # Fetch real-time market cap using Yahoo Finance
+            # Market cap: reuse cached value, else resolve ticker + fetch live.
             ticker = ai_data.get("ticker", "N/A")
-            # The LLM misses tickers for companies that went public after its
-            # training cutoff — resolve from the company name via live search.
-            if not ticker or ticker.upper() == "N/A":
-                resolved = resolve_ticker_from_name(company)
-                if resolved:
-                    ticker = resolved
-                    ai_data["ticker"] = resolved
-            market_cap_str = "Not Listed / Private" if not ticker or ticker.upper() == "N/A" else "N/A"
-            if ticker and ticker.upper() != "N/A":
-                try:
-                    import yfinance as yf
-                    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5), reraise=True)
-                    def _fetch_mcap(t):
-                        stock = yf.Ticker(t)
-                        return stock.info.get("marketCap")
+            if cached_facts and cached_facts.get("market_cap"):
+                market_cap_str = cached_facts["market_cap"]
+                ticker = cached_facts.get("ticker") or ticker
+                if ticker and ticker != "N/A":
+                    ai_data["ticker"] = ticker
+                logger.info(f"Using cached market cap for '{company}': {market_cap_str}")
+            else:
+                # The LLM misses tickers for companies that went public after its
+                # training cutoff — resolve from the company name via live search.
+                if not ticker or ticker.upper() == "N/A":
+                    resolved = resolve_ticker_from_name(company)
+                    if resolved:
+                        ticker = resolved
+                        ai_data["ticker"] = resolved
+                market_cap_str = "Not Listed / Private" if not ticker or ticker.upper() == "N/A" else "N/A"
+                if ticker and ticker.upper() != "N/A":
+                    try:
+                        import yfinance as yf
+                        @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5), reraise=True)
+                        def _fetch_mcap(t):
+                            stock = yf.Ticker(t)
+                            return stock.info.get("marketCap")
 
-                    mcap = _fetch_mcap(ticker)
-                    if mcap:
-                        if mcap >= 1e12:
-                            market_cap_str = f"${mcap / 1e12:.2f}T"
-                        elif mcap >= 1e9:
-                            market_cap_str = f"${mcap / 1e9:.2f}B"
-                        else:
-                            market_cap_str = f"${mcap / 1e6:.2f}M"
-                        intel["source"] = "Wikipedia + Yahoo Finance"
-                except Exception as e:
-                    logger.warning(f"yfinance failed to fetch market cap for {ticker}: {e}")
+                        mcap = _fetch_mcap(ticker)
+                        if mcap:
+                            if mcap >= 1e12:
+                                market_cap_str = f"${mcap / 1e12:.2f}T"
+                            elif mcap >= 1e9:
+                                market_cap_str = f"${mcap / 1e9:.2f}B"
+                            else:
+                                market_cap_str = f"${mcap / 1e6:.2f}M"
+                            intel["source"] = "Wikipedia + Yahoo Finance"
+                    except Exception as e:
+                        logger.warning(f"yfinance failed to fetch market cap for {ticker}: {e}")
 
             ai_data["market_cap"] = market_cap_str
             intel.update(ai_data)
-            # Always trust Wikidata employee count over Gemini's inference
+            # Always trust the authoritative Wikidata employee count over LLM inference
             if wikidata_employees:
                 intel["employees"] = wikidata_employees
                 logger.info(f"Restored authoritative Wikidata employee count: {wikidata_employees}")
-            logger.info(f"Enhanced company intel for '{company}' with Gemini")
+            logger.info(f"Enhanced company intel for '{company}' via {provider}")
 
     except Exception as e:
-        logger.warning(f"Gemini company enrichment failed: {e}")
+        logger.warning(f"Company enrichment failed: {e}")
+
+    # Persist role-independent company facts for reuse across other roles.
+    if company and company != "Unknown" and not cached_facts and main_wiki:
+        try:
+            mc = intel.get("market_cap")
+            await save_company_snapshot(facts_key, {
+                "description": intel.get("description"),
+                "wikipedia_url": intel.get("wikipedia_url", ""),
+                "source": intel.get("source", "Wikipedia API"),
+                "employees": intel.get("employees") if intel.get("employees") != "N/A" else None,
+                "ticker": intel.get("ticker") if intel.get("ticker") not in (None, "N/A") else None,
+                # Cache real values and the stable "Not Listed / Private" verdict,
+                # but not transient "N/A" failures (so they retry next time).
+                "market_cap": mc if mc and mc != "N/A" else None,
+            })
+            logger.info(f"Cached company-level facts for '{company}'")
+        except Exception as e:
+            logger.warning(f"Company facts cache write failed for '{company}': {e}")
 
     return intel
