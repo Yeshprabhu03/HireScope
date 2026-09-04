@@ -388,7 +388,7 @@ _EMBEDDED_REPORT_TEMPLATE = r"""<!DOCTYPE html>
       </div>
     {% endif %}
 
-    {% if company_revenue_breakdown or company_org_chart %}
+    {% if company_revenue_total or company_revenue_breakdown or company_org_chart %}
     <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--gray-200);">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <strong style="font-size: 16px; color: var(--primary);">Corporate Structure & Revenue</strong>
@@ -398,6 +398,12 @@ _EMBEDDED_REPORT_TEMPLATE = r"""<!DOCTYPE html>
         </a>
         {% endif %}
       </div>
+      {% if company_revenue_total %}
+      <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;">
+        <span style="font-size: 24px; font-weight: 700; color: var(--primary);">{{ company_revenue_total }}</span>
+        <span style="font-size: 13px; color: var(--gray-500);">annual revenue{% if company_revenue_fy %} &middot; FY{{ company_revenue_fy }}{% endif %}{% if company_revenue_yoy is not none %} &middot; {{ company_revenue_yoy }}% YoY{% endif %} &middot; SEC 10-K</span>
+      </div>
+      {% endif %}
       <div class="two-col">
         {% if company_revenue_breakdown %}
         <div>
@@ -419,8 +425,10 @@ _EMBEDDED_REPORT_TEMPLATE = r"""<!DOCTYPE html>
             </tbody>
           </table>
         </div>
+        {% elif company_revenue_total %}
+        <div><p style='font-size: 13px; color: var(--gray-500); font-style: italic;'>Segment breakdown not separately disclosed (largely single-segment).</p></div>
         {% else %}
-        <div><p style='font-size: 13px; color: var(--gray-500); font-style: italic;'>Revenue breakdown not available.</p></div>
+        <div><p style='font-size: 13px; color: var(--gray-500); font-style: italic;'>Revenue data not available.</p></div>
         {% endif %}
 
         {% if company_org_chart %}
@@ -831,6 +839,22 @@ def generate_html_report(
     company_ticker = company_intel.get("ticker", "N/A")
     edgar_link = f"https://www.sec.gov/cgi-bin/browse-edgar?CIK={company_ticker}&type=10-K&action=getcompany" if company_ticker and company_ticker.upper() != "N/A" else None
 
+    def _fmt_big_usd(v):
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            return None
+        if v >= 1e12:
+            return f"${v / 1e12:.2f}T"
+        if v >= 1e9:
+            return f"${v / 1e9:.2f}B"
+        if v >= 1e6:
+            return f"${v / 1e6:.1f}M"
+        return f"${v:,.0f}"
+
+    _rev_total = _fmt_big_usd(company_intel.get("revenue_total"))
+    _rev_yoy = company_intel.get("revenue_yoy")
+
     # Context for template
     context = {
         "job_id": job_id,
@@ -868,6 +892,9 @@ def generate_html_report(
         "company_news": company_intel.get("recent_news", []),
         "company_networking": company_intel.get("linkedin_networking", "N/A"),
         "company_revenue_breakdown": company_intel.get("revenue_breakdown", []),
+        "company_revenue_total": _rev_total,
+        "company_revenue_fy": company_intel.get("revenue_fiscal_year"),
+        "company_revenue_yoy": _rev_yoy,
         "company_org_chart": company_intel.get("org_chart_mermaid", ""),
         "company_glassdoor_rating": company_intel.get("glassdoor_rating"),
         "company_glassdoor_reviews": company_intel.get("glassdoor_review_count"),

@@ -341,6 +341,93 @@ def fetch_market_cap_finnhub(company_name: str, ticker: Optional[str] = None) ->
     return None
 
 
+# --- SEC EDGAR: real annual revenue from 10-K XBRL data (no API key needed) ---
+_SEC_TICKER_MAP = None  # module-level cache of the ticker -> CIK map
+
+def _sec_headers() -> dict:
+    # SEC requires a descriptive User-Agent identifying the caller.
+    return {"User-Agent": "HireScope/1.0 (job-intelligence tool; admin@hirescope.app)"}
+
+
+def _sec_cik_for_ticker(ticker: str) -> Optional[str]:
+    global _SEC_TICKER_MAP
+    import requests
+    try:
+        if _SEC_TICKER_MAP is None:
+            r = requests.get(
+                "https://www.sec.gov/files/company_tickers.json",
+                headers=_sec_headers(), timeout=10,
+            )
+            r.raise_for_status()
+            _SEC_TICKER_MAP = {
+                v["ticker"].upper(): str(v["cik_str"]).zfill(10)
+                for v in r.json().values()
+            }
+        return _SEC_TICKER_MAP.get(ticker.upper())
+    except Exception as e:
+        logger.warning(f"SEC ticker->CIK lookup failed for '{ticker}': {e}")
+        return None
+
+
+def fetch_sec_revenue(ticker: str) -> Optional[dict]:
+    """
+    Fetch real annual revenue from SEC EDGAR's XBRL companyconcept API.
+    Returns {'total', 'fiscal_year', 'prior_total', 'yoy'} or None. No key needed.
+    """
+    if not ticker or ticker.upper() == "N/A":
+        return None
+    cik = _sec_cik_for_ticker(ticker)
+    if not cik:
+        return None
+    import requests
+    from datetime import date
+    # Revenue is tagged under several us-gaap concepts depending on filing era.
+    concepts = [
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "Revenues",
+        "RevenueFromContractWithCustomerIncludingAssessedTax",
+        "SalesRevenueNet",
+    ]
+    for concept in concepts:
+        try:
+            r = requests.get(
+                f"https://data.sec.gov/api/xbrl/companyconcept/CIK{cik}/us-gaap/{concept}.json",
+                headers=_sec_headers(), timeout=10,
+            )
+            if r.status_code != 200:
+                continue
+            units = r.json().get("units", {}).get("USD", [])
+            by_end = {}
+            for u in units:
+                if u.get("form") != "10-K":
+                    continue
+                start, end, val = u.get("start"), u.get("end"), u.get("val")
+                if not (start and end and val is not None):
+                    continue
+                try:
+                    days = (date.fromisoformat(end) - date.fromisoformat(start)).days
+                except Exception:
+                    continue
+                if 330 <= days <= 400:  # keep full-year periods only
+                    by_end[end] = (val, u.get("fy"))
+            if not by_end:
+                continue
+            ordered = sorted(by_end.items(), key=lambda x: x[0], reverse=True)
+            latest_end, (latest_val, latest_fy) = ordered[0]
+            result = {"total": latest_val, "fiscal_year": latest_fy or latest_end[:4]}
+            if len(ordered) > 1:
+                prior_val = ordered[1][1][0]
+                result["prior_total"] = prior_val
+                if prior_val:
+                    result["yoy"] = round((latest_val - prior_val) / prior_val * 100, 1)
+            logger.info(f"SEC revenue for {ticker} (CIK {cik}, {concept}): {latest_val} FY{result['fiscal_year']}")
+            return result
+        except Exception as e:
+            logger.warning(f"SEC revenue lookup ({concept}) failed for {ticker}: {e}")
+            continue
+    return None
+
+
 async def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, sub_team: str = None, team_context: str = None, use_mock: bool = False, provider: str = "gemini") -> dict:
     """
     Fetch comprehensive company intelligence from Wikipedia and Gemini.
@@ -589,6 +676,19 @@ IMPORTANT: The org_chart_mermaid must be a single string without markdown format
 
             ai_data["market_cap"] = market_cap_str
             intel.update(ai_data)
+
+            # Real annual revenue from SEC EDGAR (role-independent; cached with facts).
+            if cached_facts and cached_facts.get("revenue_total"):
+                intel["revenue_total"] = cached_facts.get("revenue_total")
+                intel["revenue_fiscal_year"] = cached_facts.get("revenue_fiscal_year")
+                intel["revenue_yoy"] = cached_facts.get("revenue_yoy")
+            elif ticker and ticker.upper() != "N/A":
+                sec_rev = fetch_sec_revenue(ticker)
+                if sec_rev:
+                    intel["revenue_total"] = sec_rev.get("total")
+                    intel["revenue_fiscal_year"] = sec_rev.get("fiscal_year")
+                    intel["revenue_yoy"] = sec_rev.get("yoy")
+
             # Always trust the authoritative Wikidata employee count over LLM inference
             if wikidata_employees:
                 intel["employees"] = wikidata_employees
@@ -611,6 +711,9 @@ IMPORTANT: The org_chart_mermaid must be a single string without markdown format
                 # Only cache a real resolved value ($...); a failed/unavailable
                 # lookup stays uncached so it retries on the next analysis.
                 "market_cap": mc if (mc and str(mc).startswith("$")) else None,
+                "revenue_total": intel.get("revenue_total"),
+                "revenue_fiscal_year": intel.get("revenue_fiscal_year"),
+                "revenue_yoy": intel.get("revenue_yoy"),
             })
             logger.info(f"Cached company-level facts for '{company}'")
         except Exception as e:
