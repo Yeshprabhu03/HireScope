@@ -389,7 +389,9 @@ Research Context - Target Sub-Team (Wikipedia):
 
 {bu_context}{jd_context}
 
-Use 'N/A' for any field you are not confident about. Do NOT invent data. If a revenue breakdown or org chart cannot be reasonably estimated, provide empty arrays or empty strings.
+Use 'N/A' only for specific facts you genuinely don't know (e.g. a private company's CEO). Do NOT fabricate precise figures.
+
+However, for well-known public companies you SHOULD provide a best-effort revenue_breakdown using widely-reported public segment information — approximate percentages by major division/segment are expected (e.g. for Salesforce: Subscription & Support vs Professional Services, or by cloud: Sales/Service/Platform/Marketing & Commerce/Data). Mark them as approximate rather than leaving the array empty. Only return an empty revenue_breakdown array if the company is private/obscure with no public segment data. Likewise, always produce a plausible org_chart_mermaid from the company down to the target team/role.
 IMPORTANT: The org_chart_mermaid must be a single string without markdown formatting."""
 
             # The CompanyIntel schema is large (overview, culture list, news,
