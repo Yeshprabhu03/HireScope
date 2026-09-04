@@ -29,7 +29,7 @@ def _get_gemini_model():
         import google.generativeai as genai
         from config import settings
         genai.configure(api_key=settings.GEMINI_API_KEY)
-        _gemini_model = genai.GenerativeModel("gemini-2.0-flash")
+        _gemini_model = genai.GenerativeModel(settings.GEMINI_MODEL)
     return _gemini_model
 
 def _get_anthropic_client():

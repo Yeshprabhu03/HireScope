@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = "placeholder"
     OPENAI_API_KEY: str = "placeholder"
     GEMINI_API_KEY: str = "placeholder"
+    # Gemini model id. Override via GEMINI_MODEL env var when Google retires a model
+    # (e.g. gemini-2.0-flash was retired → 404) without needing a code change.
+    GEMINI_MODEL: str = "gemini-3.6-flash"
     HIRESCOPE_API_KEY: str = "hirescope_dev_secret"  # Default for local development
     ENV: str = "development"
     DEBUG: bool = True

@@ -416,7 +416,7 @@ async def run_job_analysis(job_id: str, job_url: str, provider: str = "gemini", 
     from config import settings
 
     def get_display_name(p):
-        return {"gemini": "Gemini 2.0 Flash", "anthropic": "Claude 3.5 Sonnet", "openai": "GPT-4o"}.get(p, "AI Assistant")
+        return {"gemini": "Gemini 3.6 Flash", "anthropic": "Claude 3.5 Sonnet", "openai": "GPT-4o"}.get(p, "AI Assistant")
 
     initial_state: JobAnalysisState = {
         "job_id": job_id,
