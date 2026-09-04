@@ -5,7 +5,7 @@ HireScope is an AI-powered job analysis platform that transforms any job posting
 ![HireScope](https://img.shields.io/badge/Status-Active%20Development-brightgreen)
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![React](https://img.shields.io/badge/React-18-61DAFB)
-![Gemini](https://img.shields.io/badge/AI-Gemini%202.0-4285F4)
+![AI](https://img.shields.io/badge/AI-OpenAI%20GPT--4o%20%7C%20Gemini%20%7C%20Claude-412991)
 
 ## ✨ Features
 
@@ -48,7 +48,7 @@ HireScope/
 │   │   ├── company_intel.py  # Company data (Wikipedia + Gemini)
 │   │   └── dol_h1b.py        # DOL H1B salary data
 │   ├── utils/
-│   │   ├── llm.py            # Centralized Gemini API helper
+│   │   ├── llm.py            # Centralized multi-provider LLM helper (OpenAI/Gemini/Claude)
 │   │   ├── job_fetcher.py    # URL scraping (requests + Playwright)
 │   │   ├── browser_fetch.py  # Advanced stealth Playwright fetcher
 │   │   └── glassdoor.py      # Glassdoor company reviews API
@@ -72,7 +72,7 @@ HireScope/
 ### Prerequisites
 - Python 3.12+
 - Node.js 18+
-- [Gemini API Key](https://aistudio.google.com/apikey) (free)
+- An LLM API key — **OpenAI is the default provider** ([OpenAI API Key](https://platform.openai.com/api-keys)). [Gemini](https://aistudio.google.com/apikey) and Anthropic Claude are also supported and provider-selectable.
 
 ### 1. Clone & Setup
 
@@ -86,9 +86,14 @@ cd HireScope
 Create a `.env` file in the project root:
 
 ```env
-GEMINI_API_KEY=your_gemini_api_key_here
+# OpenAI is the default provider — set this key.
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_MODEL=gpt-4o            # optional; override to use a newer model
+
+# Other providers are optional (provider is selectable per request).
+GEMINI_API_KEY=placeholder
+GEMINI_MODEL=gemini-3.6-flash  # optional; override when Google retires a model
 ANTHROPIC_API_KEY=placeholder
-OPENAI_API_KEY=placeholder
 DATABASE_URL=postgresql://user:pass@localhost:5432/hirescope
 ENV=development
 DEBUG=true
@@ -164,20 +169,20 @@ ssh -p 443 -o StrictHostKeyChecking=no -R0:localhost:5173 a.pinggy.io
 
 ## 🧪 Analysis Pipeline
 
-The orchestrator runs 6 sequential steps with real-time progress tracking:
+The orchestrator runs a LangGraph pipeline with real-time progress tracking:
 
-1. **🌐 Fetch Page** — Scrape HTML from the job URL
-2. **📋 Parse JD** — Extract structured data with Gemini
-3. **🏢 Company Intel** — Gather company information
-4. **💰 Salary Data** — Triangulate salary estimates
-5. **🎯 Interview Prep** — Generate interview intelligence
+1. **🌐 Fetch Page** — Scrape HTML from the job URL (with a Chromium/Playwright auto-retry for JS-rendered SPAs)
+2. **📋 Parse JD** — Extract structured data with the selected LLM
+3. **🏢 Company Intel + 💰 Salary Data** — Run in parallel: company research and triangulated salary estimates
+4. **🎯 Interview Prep** — Generate interview intelligence (RAG-backed)
+5. **⚖️ Compatibility & Skill Gaps** — Score role fit and identify gaps
 6. **📊 Generate Report** — Build the final HTML report
 
 ## 🛠️ Tech Stack
 
 **Backend:** Python, FastAPI, LangGraph, ChromaDB, Pydantic, `yfinance`
 **Frontend:** React, TypeScript, Vite, Tiptap, Recharts
-**AI:** Google Gemini 2.0 Flash
+**AI:** OpenAI GPT-4o (default), Google Gemini, Anthropic Claude — provider-selectable
 **Data:** DOL H1B disclosures, Wikipedia API, RAG, Web Scrape
 
 ## 📝 License
