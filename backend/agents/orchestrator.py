@@ -150,8 +150,9 @@ async def fetch_company_node(state: HireScopeState) -> dict:
         from data_sources.company_intel import fetch_company_intel
         from database import get_company_snapshot, save_company_snapshot
         from datetime import datetime, timedelta
+        from config import settings
 
-        cache_key = f"{company}::{job_title}"
+        cache_key = f"{settings.COMPANY_CACHE_VERSION}::{company}::{job_title}"
         if company != "Unknown":
             cached_company = await get_company_snapshot(cache_key)
             if cached_company and cached_company.get("data"):

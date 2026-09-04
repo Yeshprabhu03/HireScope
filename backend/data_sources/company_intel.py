@@ -332,7 +332,8 @@ async def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = No
     # these external fetches and only re-runs the role-specific LLM enrichment.
     from datetime import datetime, timedelta
     from database import get_company_snapshot, save_company_snapshot
-    facts_key = f"facts::{company}"
+    from config import settings as _settings
+    facts_key = f"{_settings.COMPANY_CACHE_VERSION}::facts::{company}"
     cached_facts = None
     if company and company != "Unknown":
         try:
@@ -488,7 +489,9 @@ IMPORTANT: The org_chart_mermaid must be a single string without markdown format
 
             # Market cap: reuse cached value, else resolve ticker + fetch live.
             ticker = ai_data.get("ticker", "N/A")
-            if cached_facts and cached_facts.get("market_cap"):
+            # Only reuse a cached REAL market cap ($...); never a transient
+            # failure or the misleading "Not Listed / Private" verdict.
+            if cached_facts and str(cached_facts.get("market_cap", "")).startswith("$"):
                 market_cap_str = cached_facts["market_cap"]
                 ticker = cached_facts.get("ticker") or ticker
                 if ticker and ticker != "N/A":
@@ -502,7 +505,9 @@ IMPORTANT: The org_chart_mermaid must be a single string without markdown format
                     if resolved:
                         ticker = resolved
                         ai_data["ticker"] = resolved
-                market_cap_str = "Not Listed / Private" if not ticker or ticker.upper() == "N/A" else "N/A"
+                # Default to a neutral "N/A" — we can't assert a company is
+                # private just because a (rate-limited) lookup gave no ticker.
+                market_cap_str = "N/A"
                 if ticker and ticker.upper() != "N/A":
                     try:
                         import yfinance as yf
@@ -544,9 +549,9 @@ IMPORTANT: The org_chart_mermaid must be a single string without markdown format
                 "source": intel.get("source", "Wikipedia API"),
                 "employees": intel.get("employees") if intel.get("employees") != "N/A" else None,
                 "ticker": intel.get("ticker") if intel.get("ticker") not in (None, "N/A") else None,
-                # Cache real values and the stable "Not Listed / Private" verdict,
-                # but not transient "N/A" failures (so they retry next time).
-                "market_cap": mc if mc and mc != "N/A" else None,
+                # Only cache a real resolved value ($...); a failed/unavailable
+                # lookup stays uncached so it retries on the next analysis.
+                "market_cap": mc if (mc and str(mc).startswith("$")) else None,
             })
             logger.info(f"Cached company-level facts for '{company}'")
         except Exception as e:

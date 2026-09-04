@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     DOL_H1B_DATA_PATH: str = str(DATA_DIR / "h1b_data.csv")
     GLASSDOOR_CACHE_DIR: str = str(DATA_DIR / "interview_corpus")
     USE_MOCK_DATA: bool = False
+    # Bump this (or override via env) to invalidate all cached company snapshots
+    # after changing company-intel logic, so stale results aren't served.
+    COMPANY_CACHE_VERSION: str = "v2"
 
     class Config:
         # Look for .env in both backend/ and project root
