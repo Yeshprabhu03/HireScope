@@ -381,13 +381,19 @@ def fetch_sec_revenue(ticker: str) -> Optional[dict]:
         return None
     import requests
     from datetime import date
-    # Revenue is tagged under several us-gaap concepts depending on filing era.
+    # Revenue is tagged under different us-gaap concepts by industry and filing era.
+    # Banks/financials (e.g. Morgan Stanley) use RevenuesNetOfInterestExpense; a
+    # company can also migrate tags over time, leaving an old concept frozen with
+    # stale data — so we gather every concept and pick the one with the MOST RECENT
+    # figures rather than the first that returns anything.
     concepts = [
         "RevenueFromContractWithCustomerExcludingAssessedTax",
-        "Revenues",
         "RevenueFromContractWithCustomerIncludingAssessedTax",
+        "Revenues",
+        "RevenuesNetOfInterestExpense",
         "SalesRevenueNet",
     ]
+    best = None  # (latest_end_str, result_dict, concept)
     for concept in concepts:
         try:
             r = requests.get(
@@ -409,23 +415,33 @@ def fetch_sec_revenue(ticker: str) -> Optional[dict]:
                 except Exception:
                     continue
                 if 330 <= days <= 400:  # keep full-year periods only
-                    by_end[end] = (val, u.get("fy"))
+                    by_end[end] = val
             if not by_end:
                 continue
             ordered = sorted(by_end.items(), key=lambda x: x[0], reverse=True)
-            latest_end, (latest_val, latest_fy) = ordered[0]
-            result = {"total": latest_val, "fiscal_year": latest_fy or latest_end[:4]}
+            latest_end, latest_val = ordered[0]
+            # Fiscal year comes from the period END date, not the filing's fy tag.
+            result = {"total": latest_val, "fiscal_year": int(latest_end[:4])}
             if len(ordered) > 1:
-                prior_val = ordered[1][1][0]
+                prior_val = ordered[1][1]
                 result["prior_total"] = prior_val
                 if prior_val:
                     result["yoy"] = round((latest_val - prior_val) / prior_val * 100, 1)
-            logger.info(f"SEC revenue for {ticker} (CIK {cik}, {concept}): {latest_val} FY{result['fiscal_year']}")
-            return result
+            if best is None or latest_end > best[0]:
+                best = (latest_end, result, concept)
         except Exception as e:
             logger.warning(f"SEC revenue lookup ({concept}) failed for {ticker}: {e}")
             continue
-    return None
+
+    if not best:
+        return None
+    latest_end, result, concept = best
+    # Recency guard: never surface a stale figure (e.g. a dead tag frozen at 2014).
+    if result["fiscal_year"] < date.today().year - 2:
+        logger.warning(f"SEC revenue for {ticker} is stale (FY{result['fiscal_year']}); skipping.")
+        return None
+    logger.info(f"SEC revenue for {ticker} (CIK {cik}, {concept}): {result['total']} FY{result['fiscal_year']}")
+    return result
 
 
 async def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, sub_team: str = None, team_context: str = None, use_mock: bool = False, provider: str = "gemini") -> dict:

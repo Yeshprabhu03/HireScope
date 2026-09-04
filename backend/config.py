@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     USE_MOCK_DATA: bool = False
     # Bump this (or override via env) to invalidate all cached company snapshots
     # after changing company-intel logic, so stale results aren't served.
-    COMPANY_CACHE_VERSION: str = "v2"
+    COMPANY_CACHE_VERSION: str = "v3"
 
     class Config:
         # Look for .env in both backend/ and project root
