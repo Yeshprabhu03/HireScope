@@ -90,7 +90,7 @@ const JobInput = ({ onJobSubmitted, sessionId }: JobInputProps) => {
       if (file) {
         const formData = new FormData()
         formData.append('file', file)
-        formData.append('provider', 'gemini')
+        formData.append('provider', 'openai')
         if (sessionId) formData.append('session_id', sessionId)
 
         const uploadHeaders: Record<string, string> = { ...API_HEADERS }
@@ -107,7 +107,7 @@ const JobInput = ({ onJobSubmitted, sessionId }: JobInputProps) => {
           headers: API_HEADERS,
           body: JSON.stringify({
             job_url: url,
-            provider: 'gemini',
+            provider: 'openai',
             session_id: sessionId,
             user_context: userContext || undefined
           }),

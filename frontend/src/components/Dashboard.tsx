@@ -101,7 +101,7 @@ const Dashboard = ({ onViewReport, onAnalyzeNew, highlightJobId, sessionId }: Da
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: API_HEADERS,
-        body: JSON.stringify({ job_url: url, provider: 'gemini' }),
+        body: JSON.stringify({ job_url: url, provider: 'openai' }),
       })
       if (!response.ok) throw new Error('Failed to restart analysis')
       fetchJobs()

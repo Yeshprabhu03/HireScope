@@ -5,6 +5,9 @@ from pathlib import Path
 class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = "placeholder"
     OPENAI_API_KEY: str = "placeholder"
+    # OpenAI model id. Override via OPENAI_MODEL env var to use a newer model
+    # without a code change.
+    OPENAI_MODEL: str = "gpt-4o"
     GEMINI_API_KEY: str = "placeholder"
     # Gemini model id. Override via GEMINI_MODEL env var when Google retires a model
     # (e.g. gemini-2.0-flash was retired → 404) without needing a code change.

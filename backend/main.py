@@ -93,7 +93,7 @@ app.add_middleware(
 
 class AnalyzeRequest(BaseModel):
     job_url: str
-    provider: str = "gemini"
+    provider: str = "openai"
     session_id: Optional[str] = None
     user_context: Optional[str] = None
 
@@ -111,7 +111,7 @@ class FeedbackRequest(BaseModel):
     source_text: str
 
 
-async def run_analysis(job_id: str, job_url: str, provider: str = "gemini", uploaded_text: str = None, user_context: str = None):
+async def run_analysis(job_id: str, job_url: str, provider: str = "openai", uploaded_text: str = None, user_context: str = None):
     """Background task: run the full LangGraph analysis pipeline."""
     try:
         jobs[job_id]["status"] = "processing"
@@ -233,7 +233,7 @@ async def analyze_job(request: AnalyzeRequest, background_tasks: BackgroundTasks
 async def analyze_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    provider: str = Form("gemini"),
+    provider: str = Form("openai"),
     session_id: Optional[str] = Form(None)
 ):
     """Submit a PDF Job Description for analysis. Returns job_id immediately."""
