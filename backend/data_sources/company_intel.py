@@ -255,6 +255,37 @@ async def fetch_wikidata_employees(wikipedia_page_title: str) -> Optional[str]:
     return None
 
 
+def resolve_ticker_from_name(company_name: str) -> Optional[str]:
+    """
+    Resolve a stock ticker from a company name via Yahoo Finance's search API.
+
+    The LLM often can't supply a ticker for recently-IPO'd companies (e.g.
+    ServiceTitan / TTAN, public since Dec 2024 but after most model cutoffs),
+    which left the report showing 'Not Listed / Private'. This lookup fills that
+    gap using live market data instead of the model's stale knowledge.
+    """
+    if not company_name or company_name.strip().lower() in ("", "unknown", "n/a"):
+        return None
+    try:
+        import requests
+        resp = requests.get(
+            "https://query2.finance.yahoo.com/v1/finance/search",
+            params={"q": company_name, "quotesCount": 5, "newsCount": 0},
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                   "Chrome/120.0.0.0 Safari/537.36"},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        for q in resp.json().get("quotes", []):
+            if q.get("quoteType") == "EQUITY" and q.get("symbol"):
+                logger.info(f"Resolved ticker '{q['symbol']}' for '{company_name}' via Yahoo search")
+                return q["symbol"]
+    except Exception as e:
+        logger.warning(f"Yahoo ticker search failed for '{company_name}': {e}")
+    return None
+
+
 async def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = None, sub_team: str = None, team_context: str = None, use_mock: bool = False, provider: str = "gemini") -> dict:
     """
     Fetch comprehensive company intelligence from Wikipedia and Gemini.
@@ -421,6 +452,13 @@ IMPORTANT: The org_chart_mermaid must be a single string without markdown format
 
             # Fetch real-time market cap using Yahoo Finance
             ticker = ai_data.get("ticker", "N/A")
+            # The LLM misses tickers for companies that went public after its
+            # training cutoff — resolve from the company name via live search.
+            if not ticker or ticker.upper() == "N/A":
+                resolved = resolve_ticker_from_name(company)
+                if resolved:
+                    ticker = resolved
+                    ai_data["ticker"] = resolved
             market_cap_str = "Not Listed / Private" if not ticker or ticker.upper() == "N/A" else "N/A"
             if ticker and ticker.upper() != "N/A":
                 try:
@@ -438,7 +476,7 @@ IMPORTANT: The org_chart_mermaid must be a single string without markdown format
                             market_cap_str = f"${mcap / 1e9:.2f}B"
                         else:
                             market_cap_str = f"${mcap / 1e6:.2f}M"
-                        intel["source"] = "Wikipedia, Gemini, Yahoo Finance"
+                        intel["source"] = "Wikipedia + Yahoo Finance"
                 except Exception as e:
                     logger.warning(f"yfinance failed to fetch market cap for {ticker}: {e}")
 
