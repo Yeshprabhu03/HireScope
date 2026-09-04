@@ -21,6 +21,11 @@ WORKDIR /app
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install the Playwright Chromium browser + its OS-level dependencies.
+# Without this, every JS-rendered job board (Workday, Eightfold, Oracle, LinkedIn)
+# fails to render in the container and the analysis reports "Connection Blocked".
+RUN playwright install --with-deps chromium
+
 # Copy backend source (cache-bust: v3)
 COPY backend/ ./backend/
 
