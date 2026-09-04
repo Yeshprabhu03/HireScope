@@ -270,7 +270,10 @@ Behavioral Experiences:
 Process Experiences:
 {process_context}"""
 
-        result = await llm_generate_json(prompt, provider=provider, max_tokens=6000, temperature=0.1, response_schema=InterviewGuide)
+        # gemini-3.6-flash is a "thinking" model — reasoning tokens count against
+        # max_output_tokens. 6000 left too little room and the JSON truncated
+        # mid-string, so give the largest of our agents generous headroom.
+        result = await llm_generate_json(prompt, provider=provider, max_tokens=16000, temperature=0.1, response_schema=InterviewGuide)
         result["confidence_score"] = confidence_score
         result["source_count"] = verified_count
         result["data_warning"] = not has_verified_data

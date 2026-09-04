@@ -56,7 +56,10 @@ async def analyze_compatibility(
     compatibility = await llm_generate_json(
         scoring_prompt,
         provider=provider,
-        max_tokens=800,
+        # gemini-3.6-flash is a "thinking" model — reasoning tokens count against
+        # max_output_tokens, so a tight budget truncates the JSON before it finishes.
+        # Give thinking + output enough combined room.
+        max_tokens=6000,
         temperature=0.1,
         response_schema=CompatibilityScore
     )
@@ -85,7 +88,7 @@ async def analyze_compatibility(
     gap_analysis = await llm_generate_json(
         gap_prompt,
         provider=provider,
-        max_tokens=1500,
+        max_tokens=6000,  # headroom for thinking-model reasoning tokens (see above)
         temperature=0.1,
         response_schema=ResumeAITailor
     )
