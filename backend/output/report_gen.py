@@ -775,6 +775,30 @@ def _salary_bar_svg(s_min: int, s_median: int, s_max: int) -> str:
     )
 
 
+def _safe_compatibility(c: dict | None) -> dict:
+    """Ensure compatibility dict has all keys the template expects, even on agent failure."""
+    c = c or {}
+    # If agent failed, c is like {"error": "..."} — fall back to neutral defaults.
+    if not c.get("overall_grade"):
+        return {
+            "overall_grade": "N/A",
+            "overall_reasoning": c.get("error") or "Compatibility analysis unavailable for this run.",
+            "dimensions": [],
+        }
+    c.setdefault("overall_reasoning", "")
+    c.setdefault("dimensions", [])
+    return c
+
+
+def _safe_skill_gap(s: dict | None) -> dict:
+    """Ensure skill_gap dict has all keys the template expects."""
+    s = s or {}
+    s.setdefault("ats_keywords_to_add", [])
+    s.setdefault("suggested_bullet_points", [])
+    s.setdefault("skill_gaps", [])
+    return s
+
+
 def generate_html_report(
     parsed_jd: dict,
     company_intel: dict,
@@ -865,8 +889,8 @@ def generate_html_report(
         "interview_platforms": interview_intel.get("identified_sources", []),
         "study_guide_sections": interview_intel.get("study_guide", []),
 
-        "compatibility": compatibility_intel or {},
-        "skill_gap": skill_gap_intel or {},
+        "compatibility": _safe_compatibility(compatibility_intel),
+        "skill_gap": _safe_skill_gap(skill_gap_intel),
 
         "generated_at": datetime.now().strftime("%B %d, %Y at %I:%M %p"),
     }

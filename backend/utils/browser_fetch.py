@@ -5,18 +5,18 @@ from playwright.async_api import async_playwright
 
 async def fetch_rendered_text(url: str):
     async with async_playwright() as p:
-        # Switch to Webkit for better stability and stealth on macOS
-        browser = await p.webkit.launch(
-            headless=True
+        # Chromium is the most reliable engine in headless Linux containers (Railway).
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage"],
         )
         try:
             context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 viewport={"width": 1280, "height": 800}
             )
             page = await context.new_page()
 
-            # For Webkit, we rely on natural Safari fingerprints.
             sys.stderr.write(f"Stealth browser navigating to: {url}\n")
 
             # 1. Navigate with more generous timeout
