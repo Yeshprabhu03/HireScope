@@ -365,7 +365,15 @@ async def fetch_company_intel(company: str, role: str = "", parsed_jd: dict = No
         bu_context = f" The candidate is applying to the '{bu}' business unit{team_context}. " if bu and bu != 'N/A' else ""
         jd_context = f"\n\nContext - Job Description: {parsed_jd}" if parsed_jd else ""
 
-        if settings.GEMINI_API_KEY != "placeholder":
+        # Gate on the ACTIVE provider's key, not Gemini specifically — otherwise
+        # switching to OpenAI silently skips company enrichment (CEO/HQ/market cap).
+        provider_key = {
+            "gemini": settings.GEMINI_API_KEY,
+            "openai": settings.OPENAI_API_KEY,
+            "anthropic": settings.ANTHROPIC_API_KEY,
+        }.get(provider, "placeholder")
+
+        if provider_key != "placeholder":
             prompt = f"""Provide company intelligence for "{company}", specifically focusing on the "{sub_team or bu}" group.
 
 Target Team/Group: {sub_team or 'N/A'}
@@ -384,7 +392,9 @@ Research Context - Target Sub-Team (Wikipedia):
 Use 'N/A' for any field you are not confident about. Do NOT invent data. If a revenue breakdown or org chart cannot be reasonably estimated, provide empty arrays or empty strings.
 IMPORTANT: The org_chart_mermaid must be a single string without markdown formatting."""
 
-            ai_data = await llm_generate_json(prompt, provider=provider, max_tokens=900, temperature=0.0, response_schema=CompanyIntel)
+            # The CompanyIntel schema is large (overview, culture list, news,
+            # revenue breakdown, Mermaid org chart) — 900 tokens truncated it.
+            ai_data = await llm_generate_json(prompt, provider=provider, max_tokens=3000, temperature=0.0, response_schema=CompanyIntel)
 
             # Cleanup Mermaid string
             if "org_chart_mermaid" in ai_data:
