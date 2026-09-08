@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: str = str(BASE_DIR / "chroma_db")
     CHROMA_COLLECTION_NAME: str = "interview_experiences"
     DOL_H1B_DATA_PATH: str = str(DATA_DIR / "h1b_data.csv")
+    # Salary RAG: a baked-in, read-only embedding index built offline from real
+    # DOL LCA data (see backend/scripts/build_salary_index.py). Ships under data/.
+    SALARY_INDEX_DIR: str = str(DATA_DIR / "salary_index")
+    SALARY_RAG_MIN_SIMILARITY: float = 0.45  # cosine cutoff; below this we don't trust the match
     GLASSDOOR_CACHE_DIR: str = str(DATA_DIR / "interview_corpus")
     USE_MOCK_DATA: bool = False
     # Bump this (or override via env) to invalidate all cached company snapshots
