@@ -155,7 +155,8 @@ async def run_analysis(job_id: str, job_url: str, provider: str = "openai", uplo
                 company=result.get("parsed_jd", {}).get("company", "Unknown"),
                 job_title=result.get("parsed_jd", {}).get("job_title", "Unknown Role"),
                 parsed_jd=result.get("parsed_jd", {}),
-                raw_html=result.get("html_report", "")
+                raw_html=result.get("html_report", ""),
+                session_id=jobs.get(job_id, {}).get("session_id"),
             )
 
             if result.get("salary_intelligence"):
@@ -386,20 +387,19 @@ async def list_jobs(limit: int = 50, offset: int = 0, session_id: Optional[str] 
         if not session_id or j.get("session_id") == session_id
     ]
 
-    # If filtering by session, we ONLY show session jobs (from memory)
-    # This fulfills the "starts blank" requirement for new sessions
-    if session_id:
-        mem_jobs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-        return mem_jobs
-
-    # DB jobs (historical) - only fetched if NO session_id provided (e.g., admin view or full vault)
+    # Fetch persisted jobs from the DB so the vault survives page refreshes and
+    # server restarts (the in-memory store is wiped on redeploy). When a session
+    # is given we return only that session's saved jobs; otherwise the full vault.
     try:
         from database import engine, JobPosting
         from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
         from sqlmodel import select
 
         async with SQLModelAsyncSession(engine) as session:
-            statement = select(JobPosting).order_by(JobPosting.scraped_at.desc()).offset(offset).limit(limit)
+            statement = select(JobPosting)
+            if session_id:
+                statement = statement.where(JobPosting.session_id == session_id)
+            statement = statement.order_by(JobPosting.scraped_at.desc()).offset(offset).limit(limit)
             results = await session.execute(statement)
             db_jobs = results.scalars().all()
 
