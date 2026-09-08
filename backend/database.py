@@ -27,6 +27,18 @@ async def init_db():
     async with engine.begin() as conn:
         # await conn.run_sync(SQLModel.metadata.drop_all) # Dangerous, only for dev reset
         await conn.run_sync(SQLModel.metadata.create_all)
+
+    # Lightweight migration in its OWN transaction: create_all won't ALTER an
+    # existing table, so add session_id if the table predates it. A failed ALTER
+    # (column already exists) rolls back this transaction only — hence separate
+    # from create_all, so it can't poison that commit on Postgres.
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE job_postings ADD COLUMN session_id VARCHAR"))
+        logger.info("Added session_id column to job_postings.")
+    except Exception:
+        pass  # column already exists
+
     logger.info("Database initialized with SQLModel schemas.")
 
 async def get_session() -> SQLModelAsyncSession:
@@ -46,6 +58,7 @@ class JobPosting(SQLModel, table=True):
     job_title: Optional[str] = None
     parsed_jd: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     raw_html: Optional[str] = None
+    session_id: Optional[str] = Field(default=None, index=True)
     scraped_at: datetime = Field(default_factory=datetime.now)
     first_seen: datetime = Field(default_factory=datetime.now)
 
@@ -109,7 +122,7 @@ async def get_job_posting(job_id: str) -> Optional[Dict[str, Any]]:
             return job.model_dump()
         return None
 
-async def save_job_posting(job_id: str, job_url: str, company: str, job_title: str, parsed_jd: dict, raw_html: str):
+async def save_job_posting(job_id: str, job_url: str, company: str, job_title: str, parsed_jd: dict, raw_html: str, session_id: str = None):
     """Insert or update a job posting in the database (upsert by URL)."""
     async with SQLModelAsyncSession(engine) as session:
         uid = UUID(job_id)
@@ -131,6 +144,8 @@ async def save_job_posting(job_id: str, job_url: str, company: str, job_title: s
             job.job_title = job_title
             job.parsed_jd = parsed_jd
             job.raw_html = raw_html
+            if session_id:
+                job.session_id = session_id
             job.scraped_at = datetime.now()
         else:
             job = JobPosting(
@@ -139,7 +154,8 @@ async def save_job_posting(job_id: str, job_url: str, company: str, job_title: s
                 company=company,
                 job_title=job_title,
                 parsed_jd=parsed_jd,
-                raw_html=raw_html
+                raw_html=raw_html,
+                session_id=session_id,
             )
             session.add(job)
 
@@ -245,7 +261,7 @@ async def get_historical_salary(company: str, job_title: str, location: str) -> 
         from sqlalchemy import func
         from datetime import timedelta
         cutoff = datetime.now() - timedelta(days=730)
-        
+
         statement = select(
             func.count(SalaryObservation.job_url).label("obs_count"),
             func.avg(SalaryObservation.jd_salary_min).label("avg_min"),

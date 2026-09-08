@@ -10,7 +10,21 @@ function App() {
   const [view, setView] = useState<View>('input')
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [sessionId] = useState(() => crypto.randomUUID())
+  // Persist the session id so the Jobs Vault survives refreshes and browser
+  // restarts. Previously this was regenerated on every load, so each refresh
+  // looked like a brand-new (empty) session.
+  const [sessionId] = useState(() => {
+    try {
+      let sid = localStorage.getItem('hirescope_session_id')
+      if (!sid) {
+        sid = crypto.randomUUID()
+        localStorage.setItem('hirescope_session_id', sid)
+      }
+      return sid
+    } catch {
+      return crypto.randomUUID() // private mode / storage blocked
+    }
+  })
 
   const handleJobSubmitted = (jobId: string) => {
     setSelectedJobId(jobId)
