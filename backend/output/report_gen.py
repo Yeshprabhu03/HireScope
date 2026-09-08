@@ -316,10 +316,6 @@ _EMBEDDED_REPORT_TEMPLATE = r"""<!DOCTYPE html>
         <span class="info-value">{{ company_hq }}</span>
       </div>
       <div class="info-row">
-        <span class="info-label">Employees</span>
-        <span class="info-value">{{ company_employees }}</span>
-      </div>
-      <div class="info-row">
         <span class="info-label">Glassdoor Rating</span>
         <span class="info-value">
           {% if company_glassdoor_rating %}
@@ -884,7 +880,6 @@ def generate_html_report(
         "company_ceo": company_intel.get("ceo", "N/A"),
         "company_industry": company_intel.get("industry", "Technology"),
         "company_hq": company_intel.get("headquarters", "N/A"),
-        "company_employees": company_intel.get("employees", "N/A"),
         "company_source": company_intel.get("source", "Wikipedia API"),
         "company_market_cap": company_intel.get("market_cap", "N/A"),
         "company_business_unit": company_intel.get("business_unit_overview", "N/A"),
