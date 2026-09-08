@@ -159,27 +159,44 @@ async def analyze_salary(
     except Exception as e:
         logger.warning(f"Historical salary lookup failed: {e}")
 
-    # Source 1: DOL H1B data (Fallback if we don't have enough proprietary data, or add to blend)
+    # Source 1: DOL LCA salary data. Prefer the semantic RAG index (real DOL data,
+    # robust to title variance); fall back to the legacy exact-match CSV when the
+    # RAG index isn't present in the image.
     h1b_count = 0
-    h1b_median_val = None
+    used_rag = False
+    rag_scope = None
     try:
-        from config import settings
-        from data_sources.dol_h1b import load_h1b_data, get_salary_data
-
-        df = load_h1b_data(settings.DOL_H1B_DATA_PATH)
-        h1b_data = get_salary_data(df, job_title, company, location)
-        h1b_count = h1b_data.get("count", 0)
-        h1b_median_val = h1b_data.get("median")
-
-        if h1b_count > 0:
+        from data_sources.salary_rag import query_salary_rag
+        rag = await query_salary_rag(job_title, location)
+        if rag.get("count", 0) > 0:
             salary_estimates.append(
-                {"source": "DOL H1B", "min": h1b_data["min"], "max": h1b_data["max"], "median": h1b_data["median"]}
+                {"source": "DOL LCA (RAG)", "min": rag["min"], "max": rag["max"], "median": rag["median"]}
             )
-            sources_used.append(f"DOL H1B Data ({h1b_count} filings)")
-        else:
-            logger.info(f"No H1B filings found for '{job_title}' at '{company}'")
+            rag_scope = rag.get("scope", "national")
+            scope_label = "national" if rag_scope == "national" else rag_scope
+            sources_used.append(f"DOL LCA — {rag.get('matched_soc', 'occupation')} ({scope_label})")
+            used_rag = True
     except Exception as e:
-        logger.warning(f"H1B data lookup failed: {e}")
+        logger.warning(f"Salary RAG lookup failed: {e}")
+
+    if not used_rag:
+        try:
+            from config import settings
+            from data_sources.dol_h1b import load_h1b_data, get_salary_data
+
+            df = load_h1b_data(settings.DOL_H1B_DATA_PATH)
+            h1b_data = get_salary_data(df, job_title, company, location)
+            h1b_count = h1b_data.get("count", 0)
+
+            if h1b_count > 0:
+                salary_estimates.append(
+                    {"source": "DOL H1B", "min": h1b_data["min"], "max": h1b_data["max"], "median": h1b_data["median"]}
+                )
+                sources_used.append(f"DOL H1B Data ({h1b_count} filings)")
+            else:
+                logger.info(f"No H1B filings found for '{job_title}' at '{company}'")
+        except Exception as e:
+            logger.warning(f"H1B data lookup failed: {e}")
 
     # Source 2: JD-mentioned salary
     jd_salary = parse_salary_from_text(salary_mentioned)
@@ -196,16 +213,19 @@ async def analyze_salary(
     market = await estimate_market_salary_with_claude(
         job_title, company, location, seniority_level, required_skills, jd_text_snippet=jd_text_snippet, use_mock=use_mock, provider=provider
     )
-    if not jd_salary:
-        # No JD disclosure — use market estimate as the primary source
+    used_hist = any("Historical" in s for s in sources_used)
+    has_hard_data = bool(jd_salary) or used_rag or used_hist or h1b_count > 0
+    if not has_hard_data:
+        # Nothing authoritative available — the LLM estimate is our only source.
         salary_estimates.append(
             {"source": "Market Estimate", "min": market["min"], "max": market["max"],
              "median": market["median"]}
         )
         sources_used.append("Market Estimate")
     else:
-        # JD disclosed a salary — use market estimate for context only in notes, not in the range
-        logger.info(f"JD disclosed salary ${jd_salary['min']:,}-${jd_salary['max']:,}. Using it as authoritative range (market estimate suppressed from aggregation).")
+        # Real data (JD/RAG/learned/H1B) present — keep the LLM estimate for the
+        # notes only, never diluting the aggregated range with a guess.
+        logger.info(f"Hard salary data present (jd={bool(jd_salary)}, rag={used_rag}, hist={used_hist}, h1b={h1b_count}). Market estimate suppressed from aggregation.")
 
     # Aggregate
     all_mins = [s["min"] for s in salary_estimates]
@@ -217,31 +237,37 @@ async def analyze_salary(
         agg_min = jd_salary["min"]
         agg_max = jd_salary["max"]
         agg_median = (agg_min + agg_max) // 2
-    else:
-        # No disclosure — average all available sources
+    elif all_mins:
+        # No disclosure — average the available (real, non-guess) sources
         agg_min = int(sum(all_mins) / len(all_mins))
         agg_max = int(sum(all_maxs) / len(all_maxs))
         agg_median = int(sum(all_medians) / len(all_medians))
+    else:
+        # Nothing at all — last-resort LLM estimate
+        agg_min, agg_max, agg_median = market["min"], market["max"], market["median"]
 
     # Confidence reflects the AUTHORITY of the best available source, not an
     # additive bonus. A salary the employer actually posted is ground truth and
     # should score far higher than an AI market estimate.
-    used_jd = any("JD Mention" in s for s in sources_used)
-    used_hist = any("HireScope Historical" in s for s in sources_used)
+    used_jd = bool(jd_salary)
     if used_jd:
-        # Employer-posted range; even higher when H1B filings corroborate it.
-        confidence = 0.95 if h1b_count > 0 else 0.90
+        # Employer-posted range; even higher when real market data corroborates it.
+        confidence = 0.95 if (h1b_count > 0 or used_rag) else 0.90
     elif used_hist:
         confidence = 0.80
+    elif used_rag:
+        confidence = 0.75  # real DOL data, matched at the occupation level
     elif h1b_count > 0:
         confidence = min(0.75, 0.60 + h1b_count * 0.01)  # scales with filing volume
     else:
         confidence = 0.40  # LLM market estimate only — a genuine guess
     confidence = round(confidence, 2)
 
-    # Label reflects the actual basis of the figure, not just H1B presence.
+    # Label reflects the actual basis of the figure.
     if used_jd:
         data_label = "From employer's posted range"
+    elif used_rag:
+        data_label = f"DOL LCA occupation match ({'national' if rag_scope == 'national' else rag_scope})"
     elif h1b_count > 0:
         data_label = f"Based on {h1b_count} H1B filing(s)"
     elif used_hist:
