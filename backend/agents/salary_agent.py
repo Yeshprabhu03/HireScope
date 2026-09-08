@@ -223,16 +223,31 @@ async def analyze_salary(
         agg_max = int(sum(all_maxs) / len(all_maxs))
         agg_median = int(sum(all_medians) / len(all_medians))
 
-    # Confidence: 0.45 (AI only) → +0.20 for JD mention → +0.25 for H1B data
-    confidence = 0.45
-    if any("JD Mention" in s for s in sources_used):
-        confidence += 0.20
-    if h1b_count > 0:
-        confidence += 0.25 + min(0.05, h1b_count * 0.002)  # more filings → higher confidence
-    confidence = round(min(0.95, confidence), 2)
+    # Confidence reflects the AUTHORITY of the best available source, not an
+    # additive bonus. A salary the employer actually posted is ground truth and
+    # should score far higher than an AI market estimate.
+    used_jd = any("JD Mention" in s for s in sources_used)
+    used_hist = any("HireScope Historical" in s for s in sources_used)
+    if used_jd:
+        # Employer-posted range; even higher when H1B filings corroborate it.
+        confidence = 0.95 if h1b_count > 0 else 0.90
+    elif used_hist:
+        confidence = 0.80
+    elif h1b_count > 0:
+        confidence = min(0.75, 0.60 + h1b_count * 0.01)  # scales with filing volume
+    else:
+        confidence = 0.40  # LLM market estimate only — a genuine guess
+    confidence = round(confidence, 2)
 
-    # Label when using AI estimate only
-    data_label = "Estimated (no H1B filings found)" if h1b_count == 0 else f"Based on {h1b_count} H1B filing(s)"
+    # Label reflects the actual basis of the figure, not just H1B presence.
+    if used_jd:
+        data_label = "From employer's posted range"
+    elif h1b_count > 0:
+        data_label = f"Based on {h1b_count} H1B filing(s)"
+    elif used_hist:
+        data_label = "Based on learned salary observations"
+    else:
+        data_label = "AI market estimate (no disclosed or filing data)"
 
     # Handle IB-specific bonuses which are radically different from Tech RSUs
     is_ib = bool("investment banking" in job_title.lower() or "m&a" in job_title.lower() or "private equity" in job_title.lower())
