@@ -1,13 +1,13 @@
 {
   "report_version": "1.0.0",
-  "generated_at": "2026-10-14T17:49:16.926105+00:00",
+  "generated_at": "2026-10-14T18:12:15.457315+00:00",
   "dataset": {
     "id": "hirescope-synthetic-eval",
     "version": "1.0.0",
     "case_count": 15
   },
-  "code_revision": "a13da1e",
-  "working_tree_dirty": true,
+  "code_revision": "2a547e5",
+  "working_tree_dirty": false,
   "environment": {
     "python": "3.12.2",
     "platform": "macOS-26.6.2-x86_64-i386-64bit",
@@ -22,7 +22,7 @@
     "skipped": 0,
     "deselected": 10,
     "external_tests_not_run": 10,
-    "runtime_seconds": 7.509,
+    "runtime_seconds": 4.444,
     "external_requests": 0,
     "token_usage": null,
     "estimated_model_cost": null,
@@ -248,7 +248,7 @@
       "contradiction_rate": "not measured"
     },
     "performance": {
-      "suite_runtime_seconds": 7.509,
+      "suite_runtime_seconds": 4.444,
       "label": "offline test-suite runtime; not production pipeline latency",
       "p50_pipeline_seconds": null,
       "p95_pipeline_seconds": null

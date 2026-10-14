@@ -1,8 +1,8 @@
 # HireScope Offline Evaluation
 
-Dataset `hirescope-synthetic-eval` v1.0.0 · revision `a13da1e`
+Dataset `hirescope-synthetic-eval` v1.0.0 · revision `2a547e5`
 
-Tests: 50 passed, 0 failed, 0 skipped; 50 executed, 10 external cases deselected in 7.51s.
+Tests: 50 passed, 0 failed, 0 skipped; 50 executed, 10 external cases deselected in 4.44s.
 
 ## Retrieval metrics
 
