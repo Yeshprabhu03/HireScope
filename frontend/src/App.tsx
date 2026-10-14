@@ -101,7 +101,7 @@ function App() {
               />
             )}
             {view === 'report' && selectedJobId && (
-              <ReportViewer jobId={selectedJobId} onBack={handleBack} />
+              <ReportViewer jobId={selectedJobId} sessionId={sessionId} onBack={handleBack} />
             )}
           </motion.div>
         </AnimatePresence>

@@ -10,6 +10,7 @@ from langgraph.graph import StateGraph, END
 import enum
 
 logger = logging.getLogger(__name__)
+PIPELINE_TIMEOUT_SECONDS = 120
 
 
 class HireScopeState(TypedDict):
@@ -363,7 +364,11 @@ workflow.add_node("generate_report", generate_report_node)
 workflow.set_entry_point("fetch_html")
 
 # Define edges
-workflow.add_edge("fetch_html", "parse_jd")
+workflow.add_conditional_edges(
+    "fetch_html",
+    lambda state: END if state.get("status") == "failed" else "parse_jd",
+    {"parse_jd": "parse_jd", END: END},
+)
 
 workflow.add_conditional_edges(
     "parse_jd",
@@ -450,8 +455,6 @@ async def run_job_analysis(job_id: str, job_url: str, provider: str = "openai", 
     final_state = initial_state
     completed = []
     total = len(PIPELINE_STEPS_LABELS)
-
-    PIPELINE_TIMEOUT_SECONDS = 120 # Increased for LangGraph and potential retries
 
     try:
         # We use astream to capture node completions for progress reporting

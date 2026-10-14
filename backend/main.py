@@ -3,11 +3,11 @@ import logging
 from datetime import datetime
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Security, Depends, File, UploadFile, Form
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Security, Depends, File, UploadFile, Form, Query
 from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional, Dict, Any
 import os
 
@@ -94,7 +94,7 @@ app.add_middleware(
 class AnalyzeRequest(BaseModel):
     job_url: HttpUrl
     provider: str = "openai"
-    session_id: Optional[str] = None
+    session_id: str = Field(min_length=16)
     user_context: Optional[str] = None
 
 
@@ -109,6 +109,7 @@ class FeedbackRequest(BaseModel):
     section: str = "interview_intelligence"
     feedback_type: int  # 1 for upvote, -1 for downvote
     source_text: str
+    session_id: str = Field(min_length=16)
 
 
 async def run_analysis(job_id: str, job_url: str, provider: str = "openai", uploaded_text: str = None, user_context: str = None):
@@ -237,7 +238,7 @@ async def analyze_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     provider: str = Form("openai"),
-    session_id: Optional[str] = Form(None)
+    session_id: str = Form(..., min_length=16)
 ):
     """Submit a PDF Job Description for analysis. Returns job_id immediately."""
     import pypdf
@@ -295,15 +296,17 @@ async def parse_resume(file: UploadFile = File(...)):
 
 
 @app.get("/api/jobs/{job_id}")
-async def get_job_status(job_id: str):
+async def get_job_status(job_id: str, session_id: str = Query(..., min_length=16)):
     """Get status and metadata for a specific job."""
     # Check in-memory first for active jobs
     if job_id in jobs:
+        if jobs[job_id].get("session_id") != session_id:
+            raise HTTPException(status_code=404, detail="Job not found")
         return jobs[job_id]
 
     # Check DB for historical jobs
     from database import get_job_posting
-    db_job = await get_job_posting(job_id)
+    db_job = await get_job_posting(job_id, session_id=session_id)
     if db_job:
         return {
             "job_id": job_id,
@@ -318,11 +321,13 @@ async def get_job_status(job_id: str):
 
 
 @app.get("/api/jobs/{job_id}/report")
-async def get_job_report(job_id: str):
+async def get_job_report(job_id: str, session_id: str = Query(..., min_length=16)):
     """Get the full HTML report for a completed job."""
     # Check in-memory first
     if job_id in jobs:
         job = jobs[job_id]
+        if job.get("session_id") != session_id:
+            raise HTTPException(status_code=404, detail="Job not found")
         if job.get("status") == "completed":
             return {
                 "job_id": job_id,
@@ -335,7 +340,7 @@ async def get_job_report(job_id: str):
 
     # Check DB
     from database import get_job_posting
-    db_job = await get_job_posting(job_id)
+    db_job = await get_job_posting(job_id, session_id=session_id)
     if db_job:
         # Extract intelligence from parsed_jd if needed, though most is in html_report
         return {
@@ -355,6 +360,8 @@ async def submit_feedback(job_id: str, request: FeedbackRequest):
     """Submit thumbs-up or thumbs-down feedback for a generated report section."""
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
+    if jobs[job_id].get("session_id") != request.session_id:
+        raise HTTPException(status_code=404, detail="Job not found")
 
     try:
         from database import save_user_feedback
@@ -372,7 +379,7 @@ async def submit_feedback(job_id: str, request: FeedbackRequest):
 
 
 @app.get("/api/jobs")
-async def list_jobs(limit: int = 50, offset: int = 0, session_id: Optional[str] = None):
+async def list_jobs(limit: int = 50, offset: int = 0, session_id: str = Query(..., min_length=16)):
     """List analyzed jobs with pagination and session filtering."""
     # Memory jobs
     mem_jobs = [
@@ -386,12 +393,10 @@ async def list_jobs(limit: int = 50, offset: int = 0, session_id: Optional[str] 
             "created_at": j.get("created_at") or datetime.now().isoformat()
         }
         for jid, j in jobs.items()
-        if not session_id or j.get("session_id") == session_id
+        if j.get("session_id") == session_id
     ]
 
-    # Fetch persisted jobs from the DB so the vault survives page refreshes and
-    # server restarts (the in-memory store is wiped on redeploy). When a session
-    # is given we return only that session's saved jobs; otherwise the full vault.
+    # Fetch persisted jobs from the DB, always scoped to the required session capability.
     try:
         from database import engine, JobPosting
         from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
@@ -399,8 +404,7 @@ async def list_jobs(limit: int = 50, offset: int = 0, session_id: Optional[str] 
 
         async with SQLModelAsyncSession(engine) as session:
             statement = select(JobPosting)
-            if session_id:
-                statement = statement.where(JobPosting.session_id == session_id)
+            statement = statement.where(JobPosting.session_id == session_id)
             statement = statement.order_by(JobPosting.scraped_at.desc()).offset(offset).limit(limit)
             results = await session.execute(statement)
             db_jobs = results.scalars().all()

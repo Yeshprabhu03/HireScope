@@ -17,6 +17,7 @@ interface Job {
   status: string
   job_title?: string
   company?: string
+  error?: string | null
   progress?: {
     percent: number
     current_step_label: string
@@ -187,7 +188,7 @@ const Dashboard = ({ onViewReport, onAnalyzeNew, highlightJobId, sessionId }: Da
                   </h3>
                   <p className="text-sm text-indigo-600 font-bold mb-4 flex items-center gap-1.5">
                     {job.status !== 'failed' && <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-pulse" />}
-                    {job.status === 'failed' ? 'Connection Blocked' : (job.company || 'Fetching Intelligence...')}
+                    {job.status === 'failed' ? (job.error || 'Analysis failed') : (job.company || 'Fetching Intelligence...')}
                   </p>
                   <div className="flex items-center gap-2 text-slate-400 mb-6 group/link">
                     <ExternalLink size={14} className="group-hover/link:text-indigo-400 transition-colors" />
@@ -218,7 +219,7 @@ const Dashboard = ({ onViewReport, onAnalyzeNew, highlightJobId, sessionId }: Da
                   {job.status === 'failed' ? (
                     <div className="flex flex-col gap-3">
                       <div className="p-3 bg-red-50/50 border border-red-100 rounded-xl text-xs text-red-600 font-medium leading-relaxed">
-                        Intelligence synthesis interrupted. This can happen with restricted job boards.
+                        {job.error || 'Analysis failed before the report was completed.'}
                       </div>
                       <button
                         onClick={() => handleRetry(job.job_url)}

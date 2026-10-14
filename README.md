@@ -94,7 +94,8 @@ OPENAI_MODEL=gpt-4o            # optional; override to use a newer model
 GEMINI_API_KEY=placeholder
 GEMINI_MODEL=gemini-3.6-flash  # optional; override when Google retires a model
 ANTHROPIC_API_KEY=placeholder
-DATABASE_URL=postgresql://user:pass@localhost:5432/hirescope
+# SQLite works locally without a separate database server.
+DATABASE_URL=sqlite:///./hirescope-local.db
 ENV=development
 DEBUG=true
 CHROMA_PERSIST_DIR=./chroma_db
@@ -130,6 +131,20 @@ npm run dev
 ### 5. Open the App
 
 Navigate to **http://localhost:5173** and paste a job URL to analyze!
+
+If another app is already using ports 5173 or 8000, run HireScope on alternate ports. Start the backend from `backend/`:
+
+```bash
+DATABASE_URL=sqlite:///./hirescope-local.db uvicorn main:app --reload --port 8001
+```
+
+Then start the frontend from `frontend/` with its proxy pointed at that backend:
+
+```bash
+HIRESCOPE_BACKEND_URL=http://127.0.0.1:8001 npm run dev -- --port 5174
+```
+
+Open **http://127.0.0.1:5174**. `HIRESCOPE_BACKEND_URL` defaults to `http://127.0.0.1:8000` when omitted. For PostgreSQL, set `DATABASE_URL` to a running local or hosted database instead of the SQLite URL.
 
 ### 6. Remote Access (Optional)
 
@@ -177,6 +192,12 @@ The orchestrator runs a LangGraph pipeline with real-time progress tracking:
 4. **🎯 Interview Prep** — Generate interview intelligence (RAG-backed)
 5. **⚖️ Compatibility & Skill Gaps** — Score role fit and identify gaps
 6. **📊 Generate Report** — Build the final HTML report
+
+## Evaluation
+
+Run the deterministic, offline evaluation suite from `backend/` with `python3 -m evaluation.run_eval`. It writes JSON and Markdown results under `evaluation/results/`, including synthetic retrieval metrics such as Precision@5, Recall@5, MRR, and company/role eligibility. The latest sample is [evaluation/results/latest.md](evaluation/results/latest.md). Live company and Glassdoor evaluations require credentials and are opt-in with `pytest -q -m external`.
+
+The optional `python3 -m evaluation.benchmark measurements.json` command summarizes timings, token counts, and costs from measurements you provide; it does not run the pipeline or collect those measurements. See [EVALUATION.md](EVALUATION.md) for metric definitions, dataset labels, security coverage, and limitations.
 
 ## 🛠️ Tech Stack
 

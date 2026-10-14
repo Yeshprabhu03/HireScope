@@ -10,11 +10,19 @@ from typing import Literal
 from pydantic import BaseModel
 from typing import Literal, Optional, Type, Union
 
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 logger = logging.getLogger(__name__)
 
 Provider = Literal["gemini", "anthropic", "openai"]
+
+
+def _retryable_provider_error(exc: Exception) -> bool:
+    """Retry transient transport failures and retryable provider response codes only."""
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return True
+    status = getattr(exc, "status_code", None)
+    return status in {408, 409, 429} or isinstance(status, int) and status >= 500
 
 # ---------------------------------------------------------------------------
 # Singleton clients — created once at module load, reused across all calls
@@ -54,8 +62,7 @@ def _get_openai_client():
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=2, min=4, max=60),
     reraise=True,
-    # Optional: we can be specific about which exceptions to retry on if we want,
-    # but retrying on all general exceptions is safe for LLM calls.
+    retry=retry_if_exception(_retryable_provider_error),
 )
 async def llm_generate(prompt: str, provider: Provider = "gemini", max_tokens: int = 2000, temperature: float = 0.0, response_schema: Optional[Union[Type[BaseModel], dict]] = None) -> str:
     """
