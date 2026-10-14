@@ -2,8 +2,10 @@ import asyncio
 import sys
 import os
 from playwright.async_api import async_playwright
+from job_fetcher import validate_public_http_url
 
 async def fetch_rendered_text(url: str):
+    validate_public_http_url(url)
     async with async_playwright() as p:
         # Chromium is the most reliable engine in headless Linux containers (Railway).
         browser = await p.chromium.launch(
@@ -16,6 +18,16 @@ async def fetch_rendered_text(url: str):
                 viewport={"width": 1280, "height": 800}
             )
             page = await context.new_page()
+
+            async def guard_request(route):
+                try:
+                    validate_public_http_url(route.request.url)
+                    await route.continue_()
+                except ValueError as exc:
+                    sys.stderr.write(f"Blocked unsafe browser destination: {exc}\n")
+                    await route.abort()
+
+            await page.route("**/*", guard_request)
 
             sys.stderr.write(f"Stealth browser navigating to: {url}\n")
 
