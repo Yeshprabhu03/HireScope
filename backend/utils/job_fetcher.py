@@ -6,10 +6,48 @@ Uses Playwright for JavaScript-rendered sites, requests for static sites.
 import logging
 import requests
 import sys
+import ipaddress
+import socket
+from urllib.parse import urljoin, urlsplit
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
+
+
+def validate_public_http_url(url: str) -> str:
+    """Validate a URL and all resolved addresses before making an outbound request."""
+    try:
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("Only public HTTP or HTTPS job URLs are allowed")
+        host = parsed.hostname.rstrip(".").lower()
+        if host == "localhost" or host.endswith(".localhost"):
+            raise ValueError("Job URL must resolve to a public address")
+        try:
+            addresses = {ipaddress.ip_address(host)}
+        except ValueError:
+            addresses = {ipaddress.ip_address(item[4][0]) for item in socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)}
+        if not addresses or any(not address.is_global for address in addresses):
+            raise ValueError("Job URL must resolve only to public addresses")
+        return url
+    except (socket.gaierror, OSError) as exc:
+        raise ValueError("Job URL host could not be safely resolved") from exc
+
+
+def _safe_get(session, url: str, timeout: int = 15, max_redirects: int = 5):
+    for _ in range(max_redirects + 1):
+        validate_public_http_url(url)
+        response = session.get(url, timeout=timeout, allow_redirects=False)
+        if response.is_redirect or response.is_permanent_redirect:
+            location = response.headers.get("Location")
+            response.close()
+            if not location:
+                raise ValueError("Redirect did not include a destination")
+            url = urljoin(url, location)
+            continue
+        return response
+    raise ValueError("Job URL exceeded the redirect limit")
 
 # Domains that require a real browser (JS-rendered SPAs)
 JS_RENDERED_DOMAINS = [
@@ -168,7 +206,7 @@ def fetch_job_html_with_cloudscraper(url: str) -> str:
             'desktop': True
         }
     )
-    response = scraper.get(url, timeout=15)
+    response = _safe_get(scraper, url, timeout=15)
     response.raise_for_status()
     html = response.text
     if len(html) < 500:
@@ -193,7 +231,7 @@ def fetch_job_html(url: str) -> str:
             session = requests.Session()
             session.headers.update(HEADERS)
             print("Sending GET request...")
-            response = session.get(url, timeout=15)
+            response = _safe_get(session, url, timeout=15)
             print("GET request completed. Checking status...")
             response.raise_for_status()
             logger.info(f"Successfully fetched HTML via requests ({len(response.text)} chars)")
@@ -263,6 +301,8 @@ def get_job_content(url: str, use_mock: bool = False) -> tuple[str, str]:
         logger.info("Using mock job HTML data")
         html = MOCK_JOB_HTML
         return html, extract_text_from_html(html)
+
+    validate_public_http_url(url)
 
     # Fail fast with a clear message for blocked domains (e.g. LinkedIn)
     _check_blocked(url)

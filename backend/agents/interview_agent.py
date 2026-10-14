@@ -175,25 +175,29 @@ async def analyze_interviews(
 
         def is_verified_record(doc: dict) -> bool:
             meta = doc.get("metadata", {})
-            meta_company = meta.get("company", "").lower()
-            meta_role = meta.get("role", "").lower()
-
-            if company.lower() not in meta_company:
+            normalize = lambda value: " ".join("".join(c.lower() if c.isalnum() else " " for c in str(value or "")).split())
+            meta_company = normalize(meta.get("company"))
+            target_company = normalize(company)
+            if not target_company or target_company in {"unknown", "n a"} or meta_company != target_company:
                 return False
-
-            # If it's a 'general' role category, we MUST enforce role matching to prevent
-            # cross-contamination (e.g., retrieving 'Customer Success' for 'Compliance Director')
-            if role_category == "general" and meta_role and meta_role != "unknown":
-                target_words = {w for w in role.lower().split() if len(w) > 3}
-                meta_words = {w for w in meta_role.split() if len(w) > 3}
-                # If there are valid words to compare, they must have at least one overlap
-                if target_words and meta_words and not (target_words & meta_words):
-                    return False
-
-            return True
+            meta_role = normalize(meta.get("role"))
+            if not meta_role or meta_role == "unknown":
+                return False
+            # Ignore seniority and broad role-family words: they do not establish
+            # that two experiences concern the same actual job.
+            stop_words = {"senior", "junior", "staff", "lead", "principal", "associate", "director", "manager", "the", "and", "for"}
+            target_words = {w for w in normalize(role).split() if len(w) > 2 and w not in stop_words}
+            meta_words = {w for w in meta_role.split() if len(w) > 2 and w not in stop_words}
+            overlap = len(target_words & meta_words)
+            similarity = (2 * overlap / (len(target_words) + len(meta_words))) if target_words and meta_words else 0
+            return similarity >= 0.6
 
         # Count how many actually match the target company and role constraints
         verified_docs = [d for d in all_unique_data if is_verified_record(d)]
+        tech_data = [d for d in tech_data if is_verified_record(d)]
+        behavioral_data = [d for d in behavioral_data if is_verified_record(d)]
+        process_data = [d for d in process_data if is_verified_record(d)]
+        all_unique_data = tech_data + behavioral_data + process_data
         verified_count = len(set([d["text"] for d in verified_docs]))
 
         # --- PHASE 3: ON DEMAND SCRAPING (DISABLED — see scrape_on_demand_interviews) ---
@@ -275,6 +279,7 @@ Process Experiences:
         # mid-string, so give the largest of our agents generous headroom.
         result = await llm_generate_json(prompt, provider=provider, max_tokens=16000, temperature=0.1, response_schema=InterviewGuide)
         result["confidence_score"] = confidence_score
+        result["confidence_method"] = "Heuristic based on verified record count; not a calibrated probability."
         result["source_count"] = verified_count
         result["data_warning"] = not has_verified_data
         if "identified_sources" not in result:

@@ -33,7 +33,7 @@ async def get_api_key(request: Request, api_key: str = Security(api_key_header))
             detail="Not authenticated",
         )
     if api_key != settings.HIRESCOPE_API_KEY:
-        logger.warning(f"Invalid API Key attempt: {api_key}")
+        logger.warning("Invalid API key attempt")
         raise HTTPException(
             status_code=403,
             detail="Invalid or missing API Key",
@@ -92,7 +92,7 @@ app.add_middleware(
 
 
 class AnalyzeRequest(BaseModel):
-    job_url: str
+    job_url: HttpUrl
     provider: str = "openai"
     session_id: Optional[str] = None
     user_context: Optional[str] = None
@@ -129,6 +129,7 @@ async def run_analysis(job_id: str, job_url: str, provider: str = "openai", uplo
         )
 
         result_status = result.get("status", "completed")
+        succeeded = result_status == "completed"
         jobs[job_id].update(
             {
                 "status": result_status,
@@ -138,11 +139,11 @@ async def run_analysis(job_id: str, job_url: str, provider: str = "openai", uplo
                 "interview_intelligence": result.get("interview_intelligence"),
                 "html_report": result.get("html_report"),
                 "progress": {
-                    "current_step": "done",
-                    "current_step_label": "✅ Analysis complete!",
-                    "completed_steps": ["fetch_html", "parse_jd", "fetch_company", "fetch_salary", "fetch_interviews", "generate_report"],
+                    "current_step": "done" if succeeded else "failed",
+                    "current_step_label": "✅ Analysis complete!" if succeeded else "❌ Analysis failed",
+                    "completed_steps": ["fetch_html", "parse_jd", "fetch_company", "fetch_salary", "fetch_interviews", "generate_report"] if succeeded else jobs[job_id].get("progress", {}).get("completed_steps", []),
                     "total_steps": 6,
-                    "percent": 100,
+                    "percent": 100 if succeeded else jobs[job_id].get("progress", {}).get("percent", 0),
                 },
             }
         )
@@ -208,11 +209,12 @@ async def run_analysis(job_id: str, job_url: str, provider: str = "openai", uplo
 @app.post("/api/analyze")
 async def analyze_job(request: AnalyzeRequest, background_tasks: BackgroundTasks):
     """Submit a job URL for analysis. Returns job_id immediately."""
+    job_url = str(request.job_url)
     job_id = str(uuid.uuid4())
     async with _get_jobs_lock():
         jobs[job_id] = {
             "job_id": job_id,
-            "job_url": request.job_url,
+            "job_url": job_url,
             "session_id": request.session_id,
             "status": "created",
             "created_at": datetime.now().isoformat(),
@@ -225,8 +227,8 @@ async def analyze_job(request: AnalyzeRequest, background_tasks: BackgroundTasks
                 "percent": 0,
             },
         }
-    background_tasks.add_task(run_analysis, job_id, request.job_url, request.provider, None, request.user_context)
-    logger.info(f"Created job_id={job_id} for url={request.job_url} with provider={request.provider}")
+    background_tasks.add_task(run_analysis, job_id, job_url, request.provider, None, request.user_context)
+    logger.info(f"Created job_id={job_id} with provider={request.provider}")
     return {"job_id": job_id, "status": "created"}
 
 

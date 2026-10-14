@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from pathlib import Path
 
 
@@ -38,6 +39,12 @@ class Settings(BaseSettings):
     # Bump this (or override via env) to invalidate all cached company snapshots
     # after changing company-intel logic, so stale results aren't served.
     COMPANY_CACHE_VERSION: str = "v3"
+
+    @model_validator(mode="after")
+    def require_api_key_in_production(self):
+        if self.ENV.lower() in {"production", "prod"} and self.HIRESCOPE_API_KEY == "hirescope_dev_secret":  # pragma: allowlist secret
+            raise ValueError("HIRESCOPE_API_KEY must be configured with a strong secret in production")
+        return self
 
     class Config:
         # Look for .env in both backend/ and project root

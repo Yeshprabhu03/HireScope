@@ -455,15 +455,16 @@ async def run_job_analysis(job_id: str, job_url: str, provider: str = "openai", 
 
     try:
         # We use astream to capture node completions for progress reporting
-        async for event in app.astream(initial_state, {"recursion_limit": 20}):
-            for node_name, output in event.items():
-                final_state.update(output)
-                if node_name in PIPELINE_STEPS_LABELS:
-                    completed.append(node_name)
-                    _update_progress_live(jobs, job_id, node_name, completed, total)
+        async with asyncio.timeout(PIPELINE_TIMEOUT_SECONDS):
+            async for event in app.astream(initial_state, {"recursion_limit": 20}):
+                for node_name, output in event.items():
+                    final_state.update(output)
+                    if node_name in PIPELINE_STEPS_LABELS:
+                        completed.append(node_name)
+                        _update_progress_live(jobs, job_id, node_name, completed, total)
 
-                if final_state.get("status") == "failed":
-                    break
+                    if final_state.get("status") == "failed":
+                        break
 
         # After completion, save to cache
         if final_state.get("status") == "completed" and final_state.get("parsed_jd"):

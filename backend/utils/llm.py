@@ -183,14 +183,15 @@ async def llm_generate_json(prompt: str, provider: Provider = "gemini", max_toke
                 escape = False
 
     try:
-        return json.loads(processed)
+        parsed = json.loads(processed)
     except json.JSONDecodeError as e:
         logger.error(f"JSON Parsing failed for provider {provider}. Error: {e}")
         logger.error(f"Raw response: {raw}")
         # If it's still failing with extra data, we can try to trim strictly to the error position
         if "Extra data" in str(e):
              try:
-                 return json.loads(processed[:e.pos])
+                 parsed = json.loads(processed[:e.pos])
+                 return _validate_response(parsed, response_schema)
              except:
                  pass
 
@@ -202,8 +203,20 @@ async def llm_generate_json(prompt: str, provider: Provider = "gemini", max_toke
             for line in lines:
                 fixed_lines.append(line.strip())
             joined = " ".join(fixed_lines)
-            return json.loads(joined)
+            parsed = json.loads(joined)
+            return _validate_response(parsed, response_schema)
         except:
             pass
 
         raise
+
+    return _validate_response(parsed, response_schema)
+
+
+def _validate_response(parsed: dict, response_schema):
+    """Enforce the requested Pydantic contract regardless of provider JSON mode."""
+    if response_schema and hasattr(response_schema, "model_validate"):
+        return response_schema.model_validate(parsed).model_dump()
+    if not isinstance(parsed, dict):
+        raise ValueError("LLM response must be a JSON object")
+    return parsed
