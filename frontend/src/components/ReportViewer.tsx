@@ -21,10 +21,11 @@ interface ReportData {
 
 interface Props {
   jobId: string
+  sessionId: string
   onBack: () => void
 }
 
-export default function ReportViewer({ jobId, onBack }: Props) {
+export default function ReportViewer({ jobId, sessionId, onBack }: Props) {
   const [report, setReport] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -33,7 +34,7 @@ export default function ReportViewer({ jobId, onBack }: Props) {
   useEffect(() => {
     const fetchReport = async () => {
       try {
-        const res = await fetch(`/api/jobs/${jobId}/report`, {
+        const res = await fetch(`/api/jobs/${jobId}/report?session_id=${encodeURIComponent(sessionId)}`, {
           headers: API_HEADERS
         })
         if (!res.ok) {
@@ -49,7 +50,7 @@ export default function ReportViewer({ jobId, onBack }: Props) {
       }
     }
     fetchReport()
-  }, [jobId])
+  }, [jobId, sessionId])
 
   useEffect(() => {
     if (report && report.parsed_jd) {

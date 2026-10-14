@@ -91,7 +91,7 @@ def index_interview_corpus(corpus_dir: str, use_mock_embeddings: bool = False):
         role_dir = os.path.join(corpus_dir, role_category)
         if not os.path.isdir(role_dir):
             continue
-            
+
         for filename in os.listdir(role_dir):
             if not filename.endswith(".json"):
                 continue
@@ -113,6 +113,8 @@ def index_interview_corpus(corpus_dir: str, use_mock_embeddings: bool = False):
                         all_metadatas.append({
                             "company": record.get("company", "unknown").lower(),
                             "role": record.get("role", "unknown"),
+                            "industry": record.get("industry", ""),
+                            "evidence_scope": record.get("evidence_scope", record.get("scope", "company_role")),
                             "role_category": role_category,
                             "difficulty": record.get("difficulty", "unknown"),
                             "outcome": record.get("outcome", "unknown"),
@@ -151,7 +153,7 @@ def index_interview_corpus(corpus_dir: str, use_mock_embeddings: bool = False):
 
 def index_interviews(interviews: list[str], company: str, role: str, role_category: str, use_mock_embeddings: bool = False):
     """
-    On-Demand Indexing: Takes raw text experiences, chunks them, and injects 
+    On-Demand Indexing: Takes raw text experiences, chunks them, and injects
     directly into ChromaDB memory without needing a JSON file on disk.
     """
     from config import settings
@@ -162,7 +164,7 @@ def index_interviews(interviews: list[str], company: str, role: str, role_catego
         return
 
     collection = get_collection()
-    
+
     all_docs = []
     all_metadatas = []
     all_ids = []
@@ -171,7 +173,7 @@ def index_interviews(interviews: list[str], company: str, role: str, role_catego
     for experience_text in interviews:
         if not experience_text.strip():
             continue
-            
+
         chunks = chunk_text(experience_text)
         for i, chunk in enumerate(chunks):
             # Use UUIDs to prevent collisions during dynamic ad-hoc injection
@@ -180,6 +182,7 @@ def index_interviews(interviews: list[str], company: str, role: str, role_catego
             all_metadatas.append({
                 "company": company.lower(),
                 "role": role,
+                "evidence_scope": "company_role",
                 "role_category": role_category,
                 "difficulty": "unknown",
                 "outcome": "unknown",
@@ -188,12 +191,12 @@ def index_interviews(interviews: list[str], company: str, role: str, role_catego
             })
             all_ids.append(doc_id)
         doc_count += 1
-        
+
     if not all_docs:
         return
-        
+
     logger.info(f"Injecting {len(all_docs)} dynamic chunks into ChromaDB...")
-    
+
     use_mock = use_mock_embeddings or (
         not hasattr(settings, "OPENAI_API_KEY") or settings.OPENAI_API_KEY == "placeholder"
     )

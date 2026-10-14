@@ -103,7 +103,7 @@ class UserFeedback(SQLModel, table=True):
 
 # --- Service Functions (Async) ---
 
-async def get_job_posting(job_id: str) -> Optional[Dict[str, Any]]:
+async def get_job_posting(job_id: str, session_id: str = None) -> Optional[Dict[str, Any]]:
     """Retrieve a cached job posting by its UUID."""
     async with SQLModelAsyncSession(engine) as session:
         try:
@@ -111,11 +111,15 @@ async def get_job_posting(job_id: str) -> Optional[Dict[str, Any]]:
         except ValueError:
             # Maybe it's a URL? Let's check by URL as fallback
             statement = select(JobPosting).where(JobPosting.job_url == job_id)
+            if session_id is not None:
+                statement = statement.where(JobPosting.session_id == session_id)
             results = await session.execute(statement)
             job = results.scalar_one_or_none()
             return job.model_dump() if job else None
 
         statement = select(JobPosting).where(JobPosting.id == uid)
+        if session_id is not None:
+            statement = statement.where(JobPosting.session_id == session_id)
         results = await session.execute(statement)
         job = results.scalar_one_or_none()
         if job:

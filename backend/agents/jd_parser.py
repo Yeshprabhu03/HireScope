@@ -4,13 +4,13 @@ JD Parser: uses Claude to extract structured data from job posting HTML.
 import json
 import logging
 from typing import Optional
-from pydantic import BaseModel, Field
-from tenacity import retry, stop_after_attempt, wait_exponential
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
 
 class ParsedJD(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     job_title: str = Field(default="Unknown", description="Job title/position name")
     company: str = Field(default="Unknown", description="Company name")
     location: str = Field(default="Unknown", description="Job location (city, state, remote)")
@@ -34,6 +34,9 @@ class ParsedJD(BaseModel):
     )
     salary_mentioned: Optional[str] = Field(
         default=None, description="Salary or compensation if mentioned in the JD"
+    )
+    salary_conflict: list[str] = Field(
+        default_factory=list, description="Distinct conflicting salary ranges found in the job posting; keep salary_mentioned null when the posted ranges cannot be reconciled."
     )
     remote_policy: str = Field(
         default="unknown",
@@ -78,7 +81,6 @@ MOCK_PARSED_JD = ParsedJD(
 )
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
 async def parse_job_description(html: str, use_mock: bool = False, provider: str = "gemini") -> ParsedJD:
     """
     Parse a job description HTML using Claude to extract structured data.
@@ -165,6 +167,7 @@ Rules:
 - LOOK CLOSELY for internal team names, sub-brands, or specific subsidiaries (e.g. 'NYSE' at Intercontinental Exchange, 'Ayco' at Goldman, 'Waymo' at Alphabet, 'AWS' at Amazon) and set `sub_team`.
 - If a `sub_team` is found, ALSO extract a 1-2 sentence `extracted_team_context` describing what that specific team does based on the JD text.
 - For `company`, prioritize the common brand name (e.g., 'Intercontinental Exchange' or 'ICE') rather than the full legal entity like 'Intercontinental Exchange Holdings, Inc.' if both are present.
+- If multiple inconsistent salary ranges are present, leave `salary_mentioned` null and list each verbatim range in `salary_conflict`; never silently choose one.
 - CRITICAL: ALWAYS extract extensive 'required_skills' and 'key_responsibilities'. Even if they are buried in paragraphs and not bulleted, you MUST find and list them. DO NOT leave them empty.
 
 Input:

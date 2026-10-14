@@ -178,6 +178,10 @@ The orchestrator runs a LangGraph pipeline with real-time progress tracking:
 5. **⚖️ Compatibility & Skill Gaps** — Score role fit and identify gaps
 6. **📊 Generate Report** — Build the final HTML report
 
+## Evaluation
+
+Run the deterministic, offline evaluation suite from `backend/` with `python3 -m evaluation.run_eval`. It writes JSON and Markdown results under `evaluation/results/`. Live company and Glassdoor evaluations require credentials and are opt-in with `pytest -q -m external`. See [EVALUATION.md](EVALUATION.md) for metric definitions, dataset labels, security coverage, and limitations.
+
 ## 🛠️ Tech Stack
 
 **Backend:** Python, FastAPI, LangGraph, ChromaDB, Pydantic, `yfinance`

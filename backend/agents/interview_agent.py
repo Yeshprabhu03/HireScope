@@ -90,7 +90,16 @@ async def analyze_interviews(
 
     if use_mock:
         logger.info(f"Using mock interview intel for '{job_title}' at '{company}'")
-        return MOCK_INTERVIEW_INTEL
+        return {
+            **MOCK_INTERVIEW_INTEL,
+            "rounds": [],
+            "process_overview": f"No verified {company} interview-process evidence is available. Topics below are generic preparation suggestions for {job_title}.",
+            "technical_questions": [f"Likely Topic: Review requirements from the {job_title} job description."],
+            "behavioral_questions": ["Likely Topic: Prepare examples tied to responsibilities in the job description."],
+            "source": "Synthetic evaluation fixture",
+            "source_count": 0,
+            "data_warning": True,
+        }
 
     try:
         from rag.retriever import retrieve_relevant_experiences
@@ -129,6 +138,7 @@ async def analyze_interviews(
             role_category=role_category,
             industry=industry,
             limit=5,
+            include_general=True,
         )
         behavioral_results = await retrieve_relevant_experiences(
             query=f"{role} behavioral interview questions",
@@ -137,6 +147,7 @@ async def analyze_interviews(
             role_category=role_category,
             industry=industry,
             limit=3,
+            include_general=True,
         )
         process_results = await retrieve_relevant_experiences(
             query=f"{role} interview process rounds",
@@ -145,6 +156,7 @@ async def analyze_interviews(
             role_category=role_category,
             industry=industry,
             limit=3,
+            include_general=True,
         )
 
         def get_doc_data(results: dict) -> list[dict]:
@@ -170,10 +182,17 @@ async def analyze_interviews(
         tech_data = get_doc_data(tech_results)
         behavioral_data = get_doc_data(behavioral_results)
         process_data = get_doc_data(process_results)
+        general_data_by_text = {}
+        for response in (tech_results, behavioral_results, process_results):
+            for record in response.get("general_evidence", []):
+                if isinstance(record, dict) and record.get("metadata", {}).get("evidence_scope") == "industry_general":
+                    general_data_by_text.setdefault(record.get("text", ""), record)
+        general_data = [record for text, record in general_data_by_text.items() if text]
 
         all_unique_data = tech_data + behavioral_data + process_data
 
         def is_verified_record(doc: dict) -> bool:
+            from rag.retriever import _role_matches
             meta = doc.get("metadata", {})
             normalize = lambda value: " ".join("".join(c.lower() if c.isalnum() else " " for c in str(value or "")).split())
             meta_company = normalize(meta.get("company"))
@@ -183,14 +202,7 @@ async def analyze_interviews(
             meta_role = normalize(meta.get("role"))
             if not meta_role or meta_role == "unknown":
                 return False
-            # Ignore seniority and broad role-family words: they do not establish
-            # that two experiences concern the same actual job.
-            stop_words = {"senior", "junior", "staff", "lead", "principal", "associate", "director", "manager", "the", "and", "for"}
-            target_words = {w for w in normalize(role).split() if len(w) > 2 and w not in stop_words}
-            meta_words = {w for w in meta_role.split() if len(w) > 2 and w not in stop_words}
-            overlap = len(target_words & meta_words)
-            similarity = (2 * overlap / (len(target_words) + len(meta_words))) if target_words and meta_words else 0
-            return similarity >= 0.6
+            return _role_matches(role, meta_role)
 
         # Count how many actually match the target company and role constraints
         verified_docs = [d for d in all_unique_data if is_verified_record(d)]
@@ -216,6 +228,15 @@ async def analyze_interviews(
                 except:
                     s_meta = [s_meta]
             sources_found.extend(s_meta)
+        general_sources = []
+        for d in general_data:
+            s_meta = d["metadata"].get("sources", [])
+            if isinstance(s_meta, str):
+                try:
+                    s_meta = json.loads(s_meta)
+                except (TypeError, json.JSONDecodeError):
+                    s_meta = [s_meta]
+            general_sources.extend(s_meta if isinstance(s_meta, list) else [])
 
         # Add industry-standard sources if certain categories match
         if role_category == "Product":
@@ -224,11 +245,13 @@ async def analyze_interviews(
             sources_found.append("WallStreetOasis")
 
         sources_found = list(set([s for s in sources_found if s]))
+        general_sources = list(set([f"General {industry} pattern: {s}" for s in general_sources if s]))
         source_count = len(set([d["text"] for d in all_unique_data]))
 
         tech_context = "\n\n---\n\n".join([d["text"] for d in tech_data]) if tech_data else "No specific technical data available"
         behavioral_context = "\n\n---\n\n".join([d["text"] for d in behavioral_data]) if behavioral_data else "No specific behavioral data available"
         process_context = "\n\n---\n\n".join([d["text"] for d in process_data]) if process_data else "No specific process data available"
+        general_context = "\n\n---\n\n".join([d["text"] for d in general_data]) if general_data else "No general industry evidence available"
 
         has_verified_data = verified_count > 0
         confidence_score = 0.9 if verified_count > 2 else 0.7 if verified_count > 0 else 0.4
@@ -241,7 +264,7 @@ async def analyze_interviews(
         company_context = json.dumps(company_intel, indent=2) if company_intel else "No specific company context provided."
 
         prompt = f"""You are an expert Executive Interview Coach and Principal Tech Lead.
-We have analyzed {source_count} actual candidate interview experiences for {company} / {industry} from sources including {', '.join(sources_found) if sources_found else 'AI knowledge'}.
+We have {source_count} eligible company-and-role interview records for {company}. Company-specific sources: {', '.join(sources_found) if sources_found else 'none'}. General {industry} sources: {', '.join(general_sources) if general_sources else 'none'}.
 
 Role Category: {role_category}
 Target Role: {role}
@@ -272,7 +295,11 @@ Behavioral Experiences:
 {behavioral_context}
 
 Process Experiences:
-{process_context}"""
+{process_context}
+
+General {industry} Role Patterns (not evidence of this company's interview process):
+{general_context}
+Only describe these as general preparation patterns. Never label them "Reported" for {company}; use "Likely Topic" and state that they are general patterns."""
 
         # gemini-3.6-flash is a "thinking" model — reasoning tokens count against
         # max_output_tokens. 6000 left too little room and the JSON truncated
@@ -282,8 +309,8 @@ Process Experiences:
         result["confidence_method"] = "Heuristic based on verified record count; not a calibrated probability."
         result["source_count"] = verified_count
         result["data_warning"] = not has_verified_data
-        if "identified_sources" not in result:
-            result["identified_sources"] = sources_found
+        result["identified_sources"] = sources_found + general_sources
+        result["general_source_count"] = len({d["text"] for d in general_data})
 
         logger.info(f"Interview intelligence generated for '{role}' at '{company}' (Confidence: {confidence_score})")
         return result

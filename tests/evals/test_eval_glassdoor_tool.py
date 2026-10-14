@@ -10,6 +10,7 @@ def load_benchmark_data():
     return data["companies"]
 
 @pytest.mark.asyncio
+@pytest.mark.external
 @pytest.mark.parametrize("company_info", load_benchmark_data())
 async def test_get_glassdoor_data_benchmark(company_info):
     """

@@ -1,0 +1,265 @@
+{
+  "report_version": "1.0.0",
+  "generated_at": "2026-10-14T17:49:16.926105+00:00",
+  "dataset": {
+    "id": "hirescope-synthetic-eval",
+    "version": "1.0.0",
+    "case_count": 15
+  },
+  "code_revision": "a13da1e",
+  "working_tree_dirty": true,
+  "environment": {
+    "python": "3.12.2",
+    "platform": "macOS-26.6.2-x86_64-i386-64bit",
+    "provider_configuration": "offline deterministic tests; live provider calls excluded"
+  },
+  "execution": {
+    "command": "python3 -m evaluation.run_eval",
+    "pytest_exit_code": 0,
+    "tests_executed": 50,
+    "passed": 50,
+    "failed": 0,
+    "skipped": 0,
+    "deselected": 10,
+    "external_tests_not_run": 10,
+    "runtime_seconds": 7.509,
+    "external_requests": 0,
+    "token_usage": null,
+    "estimated_model_cost": null,
+    "cache_hit_rate": null,
+    "external_tests_included": false
+  },
+  "metric_definitions": {
+    "precision_at_k": "relevant eligible documents in first k divided by k",
+    "recall_at_k": "relevant eligible documents in first k divided by labeled eligible documents",
+    "mrr": "mean reciprocal rank of first relevant eligible result",
+    "hit_rate": "queries with at least one relevant eligible result divided by scored queries",
+    "company_match_rate": "returned company-scoped records with exact normalized company match divided by returned company-scoped records",
+    "role_match_rate": "returned company-scoped records passing role eligibility divided by returned company-scoped records"
+  },
+  "metrics": {
+    "retrieval": {
+      "definition": "Keyword retrieval over synthetic corpus records. Semantic recall is not measured because offline runs do not call embedding providers.",
+      "queries": 3,
+      "precision_at_5": {
+        "numerator": 2,
+        "denominator": 10,
+        "value": 0.2,
+        "cases_scored": 2
+      },
+      "recall_at_5": {
+        "numerator": 2,
+        "denominator": 2,
+        "value": 1.0,
+        "cases_scored": 2
+      },
+      "mrr": {
+        "numerator": 2.0,
+        "denominator": 2,
+        "value": 1.0,
+        "cases_scored": 2
+      },
+      "hit_rate": {
+        "numerator": 2,
+        "denominator": 2,
+        "value": 1.0,
+        "cases_scored": 2
+      },
+      "company_match_rate": {
+        "numerator": 2,
+        "denominator": 2,
+        "value": 1.0
+      },
+      "role_match_rate": {
+        "numerator": 2,
+        "denominator": 2,
+        "value": 1.0
+      },
+      "no_company_evidence_cases": 1,
+      "no_company_evidence_correct": 1,
+      "general_scope_correct": 3,
+      "general_scope_denominator": 3,
+      "per_case": [
+        {
+          "id": "q1",
+          "eligible_ids": [
+            "d1"
+          ],
+          "semantic_relevant_ids": [
+            "d1"
+          ],
+          "general_ids": [
+            "d5"
+          ],
+          "metrics": {
+            "precision_at_k": {
+              "numerator": 1,
+              "denominator": 5,
+              "value": 0.2
+            },
+            "recall_at_k": {
+              "numerator": 1,
+              "denominator": 1,
+              "value": 1.0
+            },
+            "mrr": {
+              "numerator": 1.0,
+              "denominator": 1,
+              "value": 1.0
+            },
+            "hit_rate": {
+              "numerator": 1,
+              "denominator": 1,
+              "value": 1.0
+            }
+          },
+          "company_match_rate": {
+            "numerator": 1,
+            "denominator": 1,
+            "value": 1.0
+          },
+          "role_match_rate": {
+            "numerator": 1,
+            "denominator": 1,
+            "value": 1.0
+          },
+          "expected_no_evidence": false,
+          "no_company_evidence_correct": false,
+          "general_scope_correct": true
+        },
+        {
+          "id": "q2",
+          "eligible_ids": [
+            "d2"
+          ],
+          "semantic_relevant_ids": [
+            "d2"
+          ],
+          "general_ids": [
+            "d5"
+          ],
+          "metrics": {
+            "precision_at_k": {
+              "numerator": 1,
+              "denominator": 5,
+              "value": 0.2
+            },
+            "recall_at_k": {
+              "numerator": 1,
+              "denominator": 1,
+              "value": 1.0
+            },
+            "mrr": {
+              "numerator": 1.0,
+              "denominator": 1,
+              "value": 1.0
+            },
+            "hit_rate": {
+              "numerator": 1,
+              "denominator": 1,
+              "value": 1.0
+            }
+          },
+          "company_match_rate": {
+            "numerator": 1,
+            "denominator": 1,
+            "value": 1.0
+          },
+          "role_match_rate": {
+            "numerator": 1,
+            "denominator": 1,
+            "value": 1.0
+          },
+          "expected_no_evidence": false,
+          "no_company_evidence_correct": false,
+          "general_scope_correct": true
+        },
+        {
+          "id": "q3",
+          "eligible_ids": [],
+          "semantic_relevant_ids": [
+            "d3"
+          ],
+          "general_ids": [
+            "d5"
+          ],
+          "metrics": {
+            "precision_at_k": {
+              "numerator": 0,
+              "denominator": 5,
+              "value": 0.0
+            },
+            "recall_at_k": {
+              "numerator": 0,
+              "denominator": 0,
+              "value": null
+            },
+            "mrr": {
+              "numerator": 0.0,
+              "denominator": 0,
+              "value": null
+            },
+            "hit_rate": {
+              "numerator": 0,
+              "denominator": 1,
+              "value": 0.0
+            }
+          },
+          "company_match_rate": {
+            "numerator": 0,
+            "denominator": 0,
+            "value": null
+          },
+          "role_match_rate": {
+            "numerator": 0,
+            "denominator": 0,
+            "value": null
+          },
+          "expected_no_evidence": true,
+          "no_company_evidence_correct": true,
+          "general_scope_correct": true
+        }
+      ]
+    },
+    "parser": {
+      "scope": "reference-fixture contract only; no live or simulated model accuracy claim",
+      "schema_validation": {
+        "numerator": 3,
+        "denominator": 3,
+        "value": 1.0,
+        "failures": []
+      },
+      "required_identity_field_completeness": {
+        "numerator": 6,
+        "denominator": 6,
+        "value": 1.0,
+        "fields": [
+          "company",
+          "job_title"
+        ]
+      },
+      "skill_precision_recall_f1": {
+        "status": "insufficient evaluation data: offline run has no model predictions to compare with annotations"
+      }
+    },
+    "generation": {
+      "schema_validity": "deterministic schema validation tests",
+      "unsupported_claim_rate": "not measured; requires human-reviewed claim/evidence annotations across generated reports",
+      "contradiction_rate": "not measured"
+    },
+    "performance": {
+      "suite_runtime_seconds": 7.509,
+      "label": "offline test-suite runtime; not production pipeline latency",
+      "p50_pipeline_seconds": null,
+      "p95_pipeline_seconds": null
+    }
+  },
+  "per_case_failures": [],
+  "known_limitations": [
+    "No model quality, factuality, or production latency is inferred from deterministic fixtures.",
+    "Semantic retrieval recall is not measured without the production embedding model.",
+    "Session IDs are client-held capabilities, not verified user identities.",
+    "Active job state remains process-local and can be lost on restart.",
+    "DNS validation can race the network client's later resolution; enforce deployment egress restrictions."
+  ]
+}

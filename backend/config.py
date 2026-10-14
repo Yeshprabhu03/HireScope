@@ -1,9 +1,10 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator
 from pathlib import Path
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=("../.env", ".env"))
     ANTHROPIC_API_KEY: str = "placeholder"
     OPENAI_API_KEY: str = "placeholder"
     # Finnhub — reliable market-cap source from cloud IPs (Yahoo is 429-blocked
@@ -45,10 +46,5 @@ class Settings(BaseSettings):
         if self.ENV.lower() in {"production", "prod"} and self.HIRESCOPE_API_KEY == "hirescope_dev_secret":  # pragma: allowlist secret
             raise ValueError("HIRESCOPE_API_KEY must be configured with a strong secret in production")
         return self
-
-    class Config:
-        # Look for .env in both backend/ and project root
-        env_file = ("../.env", ".env")
-
 
 settings = Settings()

@@ -534,6 +534,9 @@ _EMBEDDED_REPORT_TEMPLATE = r"""<!DOCTYPE html>
     {% if salary_data_label %}
       <p style="color: #d97706; font-size: 13px; margin-bottom: 4px;">&#9888; {{ salary_data_label }}</p>
     {% endif %}
+    {% if salary_conflict %}
+      <p style="color: #b45309; font-size: 13px; margin-bottom: 4px;">The posting contains conflicting salary ranges: {{ salary_conflict | join(", ") }}. The estimate below is not a resolved employer-posted range.</p>
+    {% endif %}
     <p style="color: var(--gray-600); font-size: 13px; margin-bottom: 4px;">
       Data confidence: {{ salary_confidence }}%
     </p>
@@ -574,6 +577,7 @@ _EMBEDDED_REPORT_TEMPLATE = r"""<!DOCTYPE html>
     <div class="confidence-bar" style="margin-bottom: 12px;">
       <div class="confidence-fill" style="width: {{ interview_confidence }}%; background: {% if interview_confidence > 70 %}#22c55e{% elif interview_confidence > 40 %}#eab308{% else %}#ef4444{% endif %};"></div>
     </div>
+    <p style="font-size:12px;color:var(--gray-600);margin-bottom:12px;">{{ interview_confidence_method }}</p>
     {% if interview_data_warning %}
       <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#92400e;">&#9888; {{ interview_source }}</div>
     {% else %}
@@ -870,6 +874,7 @@ def generate_html_report(
         "salary_median": _fmt_currency(_s_med_raw),
         "salary_max": _fmt_currency(_s_max_raw),
         "salary_range": salary_intel.get("estimated_range", "N/A"),
+        "salary_conflict": parsed_jd.get("salary_conflict", []),
         "salary_confidence": int(float(salary_intel.get("confidence_score", 0)) * 100),
         "salary_data_label": salary_intel.get("data_label", ""),
         "salary_sources": salary_intel.get("sources_used", []),
@@ -902,6 +907,7 @@ def generate_html_report(
         "interview_source_count": interview_intel.get("source_count", 0),
         "interview_data_warning": interview_intel.get("data_warning", False),
         "interview_confidence": int(float(interview_intel.get("confidence_score", 0.5)) * 100),
+        "interview_confidence_method": interview_intel.get("confidence_method", "Heuristic based on verified record count; not a calibrated probability."),
         "interview_source": interview_intel.get("source", ""),
         "interview_overview": interview_intel.get("process_overview", ""),
         "interview_rounds": interview_intel.get("rounds", []),

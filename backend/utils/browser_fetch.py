@@ -2,7 +2,21 @@ import asyncio
 import sys
 import os
 from playwright.async_api import async_playwright
-from job_fetcher import validate_public_http_url
+try:
+    from utils.job_fetcher import validate_public_http_url
+except ModuleNotFoundError:  # Direct execution by browser_fetch.py subprocess.
+    from job_fetcher import validate_public_http_url
+
+
+async def guard_browser_request(route):
+    """Validate every browser request, including redirects and subresources."""
+    try:
+        validate_public_http_url(route.request.url)
+        await route.continue_()
+    except ValueError as exc:
+        sys.stderr.write(f"Blocked unsafe browser destination: {exc}\n")
+        await route.abort()
+
 
 async def fetch_rendered_text(url: str):
     validate_public_http_url(url)
@@ -19,15 +33,7 @@ async def fetch_rendered_text(url: str):
             )
             page = await context.new_page()
 
-            async def guard_request(route):
-                try:
-                    validate_public_http_url(route.request.url)
-                    await route.continue_()
-                except ValueError as exc:
-                    sys.stderr.write(f"Blocked unsafe browser destination: {exc}\n")
-                    await route.abort()
-
-            await page.route("**/*", guard_request)
+            await page.route("**/*", guard_browser_request)
 
             sys.stderr.write(f"Stealth browser navigating to: {url}\n")
 
