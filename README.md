@@ -1,6 +1,10 @@
 # 🔍 HireScope — Job Intelligence in Seconds
 
+### 🚀 Live demo: **[hirescope.streamlit.app](https://hirescope-aj7vsyyogsszqmqnae3mre.streamlit.app/)**
+
 HireScope is an AI-powered job analysis platform that transforms any job posting URL into a comprehensive intelligence report. Paste a link, get insights on salary, company culture, interview prep, and more.
+
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://hirescope-aj7vsyyogsszqmqnae3mre.streamlit.app/)
 
 ![HireScope](https://img.shields.io/badge/Status-Active%20Development-brightgreen)
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
@@ -156,8 +160,11 @@ ssh -p 443 -o StrictHostKeyChecking=no -R0:localhost:5173 a.pinggy.io
 
 ## 🧩 Streamlit App (alternative UI)
 
+**▶️ Live:** [hirescope-aj7vsyyogsszqmqnae3mre.streamlit.app](https://hirescope-aj7vsyyogsszqmqnae3mre.streamlit.app/)
+
 A standalone Streamlit front-end ([`streamlit_app.py`](streamlit_app.py)) runs the
 full analysis pipeline **in-process** — no FastAPI server or React build needed.
+It mirrors the React app's look (gradient header, indigo accent, Outfit/Inter).
 
 **Run locally:**
 ```bash
