@@ -1,0 +1,8 @@
+# Root requirements for the Streamlit app (auto-detected by Streamlit Community
+# Cloud). Pulls in the full backend stack — the app runs the orchestrator
+# in-process — plus Streamlit itself. The Railway/Docker build does NOT use this
+# file; it installs backend/requirements.txt directly.
+#   pip install -r requirements.txt
+#   streamlit run streamlit_app.py
+-r backend/requirements.txt
+streamlit>=1.37.0

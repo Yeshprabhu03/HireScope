@@ -6,10 +6,13 @@ FastAPI server needed): it imports the LangGraph orchestrator directly, runs it
 in a background thread, streams live progress, and renders the generated HTML
 report.
 
-Run:
-    pip install streamlit        # one-time
+Run locally:
+    pip install -r requirements.txt   # one-time (pulls backend stack + streamlit)
     # ensure .env has OPENAI_API_KEY (default provider)
     streamlit run streamlit_app.py
+
+Deploy (Streamlit Community Cloud): point it at streamlit_app.py and set
+OPENAI_API_KEY in the app's Secrets. See the README "Deploy the Streamlit app".
 """
 import asyncio
 import io
@@ -21,6 +24,15 @@ import uuid
 
 import streamlit as st
 import streamlit.components.v1 as components
+
+# On Streamlit Community Cloud there is no .env file — secrets live in the app's
+# Secrets manager. Bridge them into the environment so the backend's pydantic
+# config (which reads os.environ) picks them up. No-op locally where .env is used.
+try:
+    for _k, _v in st.secrets.items():
+        os.environ.setdefault(_k, str(_v))
+except Exception:
+    pass
 
 # Make the backend package importable (agents/, data_sources/, utils/, ...).
 _BACKEND = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend")

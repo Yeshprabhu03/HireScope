@@ -1,6 +1,0 @@
-# Streamlit UI dependencies. Pulls in the full backend stack (the app runs the
-# orchestrator in-process) plus Streamlit itself.
-#   pip install -r requirements-streamlit.txt
-#   streamlit run streamlit_app.py
--r backend/requirements.txt
-streamlit>=1.37.0
