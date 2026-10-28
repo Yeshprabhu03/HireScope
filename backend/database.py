@@ -166,30 +166,42 @@ async def save_job_posting(job_id: str, job_url: str, company: str, job_title: s
         await session.commit()
 
 async def get_company_snapshot(company: str) -> Optional[Dict[str, Any]]:
-    """Retrieve a cached company snapshot if it exists."""
-    async with SQLModelAsyncSession(engine) as session:
-        statement = select(CompanySnapshot).where(CompanySnapshot.company == company)
-        results = await session.execute(statement)
-        snap = results.scalar_one_or_none()
-        if snap:
-            return snap.model_dump()
+    """Retrieve a cached company snapshot if it exists.
+
+    The cache is best-effort: if the database is unreachable (e.g. Streamlit
+    Cloud with no Postgres), treat it as a cache MISS rather than letting the
+    error propagate and abort the whole analysis step.
+    """
+    try:
+        async with SQLModelAsyncSession(engine) as session:
+            statement = select(CompanySnapshot).where(CompanySnapshot.company == company)
+            results = await session.execute(statement)
+            snap = results.scalar_one_or_none()
+            if snap:
+                return snap.model_dump()
+            return None
+    except Exception as e:
+        logger.warning(f"Company snapshot read unavailable (DB down?): {e}")
         return None
 
 async def save_company_snapshot(company: str, data: dict):
-    """Insert or update a company intelligence snapshot."""
-    async with SQLModelAsyncSession(engine) as session:
-        statement = select(CompanySnapshot).where(CompanySnapshot.company == company)
-        results = await session.execute(statement)
-        snap = results.scalar_one_or_none()
+    """Insert or update a company intelligence snapshot (best-effort; no-op if DB is down)."""
+    try:
+        async with SQLModelAsyncSession(engine) as session:
+            statement = select(CompanySnapshot).where(CompanySnapshot.company == company)
+            results = await session.execute(statement)
+            snap = results.scalar_one_or_none()
 
-        if snap:
-            snap.data = data
-            snap.snapshot_date = datetime.now()
-        else:
-            snap = CompanySnapshot(company=company, data=data)
-            session.add(snap)
+            if snap:
+                snap.data = data
+                snap.snapshot_date = datetime.now()
+            else:
+                snap = CompanySnapshot(company=company, data=data)
+                session.add(snap)
 
-        await session.commit()
+            await session.commit()
+    except Exception as e:
+        logger.warning(f"Company snapshot write skipped (DB down?): {e}")
 
 # --- Salary Logic ---
 import re
