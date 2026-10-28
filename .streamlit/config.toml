@@ -1,0 +1,13 @@
+# Force the HireScope brand look regardless of the viewer's system/Streamlit
+# theme. Mirrors the React app's tokens. CSS in streamlit_app.py layers the
+# gradient header and Outfit/Inter fonts on top of this base.
+[theme]
+base = "light"
+primaryColor = "#4f46e5"
+backgroundColor = "#f1f5f9"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#1e293b"
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"
