@@ -154,6 +154,35 @@ To access the UI from a mobile device or external network, you can use [Pinggy](
 ssh -p 443 -o StrictHostKeyChecking=no -R0:localhost:5173 a.pinggy.io
 ```
 
+## 🧩 Streamlit App (alternative UI)
+
+A standalone Streamlit front-end ([`streamlit_app.py`](streamlit_app.py)) runs the
+full analysis pipeline **in-process** — no FastAPI server or React build needed.
+
+**Run locally:**
+```bash
+pip install -r requirements.txt
+streamlit run streamlit_app.py
+```
+Reads keys from `.env` (`OPENAI_API_KEY` is enough). For JS-rendered boards
+(Workday/Eightfold), run `playwright install chromium` once.
+
+**Deploy the Streamlit app (Streamlit Community Cloud — free):**
+1. Push the repo to GitHub (already there).
+2. Go to [share.streamlit.io](https://share.streamlit.io) → sign in with GitHub → **New app**.
+3. Pick the repo, branch, and main file **`streamlit_app.py`**.
+4. **Advanced settings → Secrets**, add your keys in TOML:
+   ```toml
+   OPENAI_API_KEY = "your-openai-key"   # pragma: allowlist secret
+   # FINNHUB_API_KEY = "your-finnhub-key"   # optional, for market cap  # pragma: allowlist secret
+   ```
+5. **Deploy.** The root `requirements.txt` is installed automatically.
+
+> Note: Community Cloud can't install a headless browser, so JS-rendered job
+> boards won't render there — static boards (Greenhouse/Lever/Indeed) and PDF
+> uploads work. For full SPA support, run locally or point the app at the
+> Railway backend.
+
 ## 🔧 Supported Job Boards
 
 | Board | Method | Status |
